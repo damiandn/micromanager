@@ -1422,7 +1422,7 @@ public class MMStudioMainFrame extends JFrame implements ScriptInterface {
          @Override
          public void run() {
             try {
-               acquisitionEngine2010Class_  = Class.forName("org.micromanager.AcquisitionEngine2010");
+               acquisitionEngine2010Class_ = getClass().getClassLoader().loadClass("org.micromanager.AcquisitionEngine2010");
             } catch (Exception ex) {
                ReportingUtils.logError(ex);
                acquisitionEngine2010Class_ = null;
