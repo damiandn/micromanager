@@ -444,6 +444,19 @@ void CPluginManager::AddLegacyFallbackSearchPath(const std::string& path)
          fallbackSearchPaths_.end())
       return;
 
+#ifdef WIN32
+   char buffer[32768];
+   DWORD len = GetEnvironmentVariable("PATH", buffer + 1, sizeof(buffer) - 3);
+   if (len && path.length() < sizeof(buffer) - 3 - len) {
+      buffer[0] = buffer[len + 1] = ';';
+	  buffer[len + 2] = '\0';
+	  if (!strstr(buffer, (string(";") + path + ";").c_str())) {
+         strcpy(buffer + len + 2, path.c_str());
+		 SetEnvironmentVariable("PATH", buffer + 1);
+	  }
+   }
+#endif
+
    fallbackSearchPaths_.push_back(path);
 }
 
