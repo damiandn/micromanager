@@ -796,6 +796,94 @@
 %}
 
 
+%pragma(java) jniclassimports=%{
+   import java.io.File;
+
+   import java.util.ArrayList;
+   import java.util.List;
+   import java.net.URL;
+   import java.net.URLDecoder;
+%}
+
+// Pull in the device adapter path that micro-manager has been compiled against
+%javaconst(1) DEVICEADAPTERPATH;
+%constant char *DEVICEADAPTERPATH = SWIG_DEVICEADAPTERPATH;
+
+%pragma(java) jniclasscode=%{
+
+  private static String URLtoFilePath(URL url) throws Exception {
+    // We need to get rid of multiple protocols (jar: and file:)
+    // and end up with an file path correct on every platform.
+    // The following lines seem to work, though it's ugly:
+	String url1 = URLDecoder.decode(url.getPath(), "UTF-8");
+	String url2 = URLDecoder.decode(new URL(url1).getPath(), "UTF-8");
+	return new File(url2).getAbsolutePath();
+  }
+
+  private static String getJarPath() {
+    String classFile = "/mmcorej/CMMCore.class";
+    try {
+		String path = URLtoFilePath(CMMCore.class.getResource(classFile));
+		int bang = path.indexOf('!');
+		if (bang > 0)
+			path = path.substring(0, bang);
+		System.out.println("MMCoreJ.jar path = " + path);
+		return path;
+	} catch (Exception e) {
+		return "";
+	}
+  }
+
+  private static String getPlatformString() {
+    String osName = System.getProperty("os.name");
+    String osArch = System.getProperty("os.arch");
+    return osName.startsWith("Mac") ? "macosx" :
+      (osName.startsWith("Win") ? "win" : osName.toLowerCase()) +
+      (osArch.indexOf("64") < 0 ? "32" : "64");
+  }
+
+  public static void loadLibrary(List<File> searchPaths, String name) {
+    String libraryName = System.mapLibraryName(name);
+    for (File path : searchPaths)
+        if (new File(path, libraryName).exists()) {
+            System.load(new File(path, libraryName).getAbsolutePath());
+            return;
+        }
+    System.loadLibrary(name);
+  }
+
+  static {
+    List<File> searchPaths = new ArrayList<File>();
+    File directory = new File(getJarPath()).getParentFile();
+    searchPaths.add(directory);
+    directory = directory.getParentFile();
+    searchPaths.add(directory);
+    String platform = getPlatformString();
+    File directoryMM = new File(new File(directory, "mm"), platform);
+    searchPaths.add(directoryMM);
+    directory = directory.getParentFile();
+    searchPaths.add(directory);
+    directoryMM = new File(new File(directory, "mm"), platform);
+    searchPaths.add(directoryMM);
+    // on Linux use the LSB-defined library path (set in configure.common)
+    if (platform.startsWith("linux"))
+        searchPaths.add(new File(MMCoreJConstants.DEVICEADAPTERPATH));
+    
+    try {
+        loadLibrary(searchPaths, "MMCoreJ_wrap");
+        for (File path : searchPaths) {
+          System.out.println(path.getAbsolutePath());
+          CMMCore.addSearchPath(path.getAbsolutePath());
+          }
+    } catch (UnsatisfiedLinkError e) {
+        System.err.println("Native code library failed to load. \n" + e);
+        // do not exit here, loadLibrary does not work on all platforms in the same way,
+        // perhaps the library is already loaded.
+        //System.exit(1);
+    }
+  }
+%}
+
 %{
 #include "../MMDevice/MMDeviceConstants.h"
 #include "../MMCore/Configuration.h"
