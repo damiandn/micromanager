@@ -139,6 +139,14 @@ public class Stage extends Device {
 			return 10000.0; // *** this is why you should implement your own stages.
 	}
 
+	/**
+	 * Run the motor to its home location.
+	 */
+	public void home()
+	{
+		setPosition(0);
+	}
+
 	public DeviceType getMMType() {
 		return DeviceType.StageDevice;
 	}

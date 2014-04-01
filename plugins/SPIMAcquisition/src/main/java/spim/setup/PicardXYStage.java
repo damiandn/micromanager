@@ -1,7 +1,11 @@
 package spim.setup;
 
+import ij.IJ;
+
 import java.util.HashMap;
 import java.util.Map;
+
+import org.micromanager.utils.ReportingUtils;
 
 import mmcorej.CMMCore;
 import spim.setup.Device.Factory;
@@ -42,6 +46,15 @@ public class PicardXYStage extends GenericXYStage {
 				throw new IllegalArgumentException("Velocity is not in 1..10 or is not an integer.");
 
 			super.setVelocity(velocity);
+		}
+
+		@Override
+		public void home() {
+			try {
+				core.home(label);
+			} catch (Exception e) {
+				ReportingUtils.logException("Could not home X/Y stage.", e);
+			}
 		}
 	}
 
