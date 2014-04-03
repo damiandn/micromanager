@@ -56,7 +56,7 @@ const char* g_Keyword_StepSizeY = "Y-StepSize";
 
 #define MAX_IDX 250
 
-inline static char* VarLog(const char* fmt, ...)
+inline static char* VarFormat(const char* fmt, ...)
 {
 	static char buffer[MM::MaxStrLength];
 
@@ -71,25 +71,32 @@ inline static char* VarLog(const char* fmt, ...)
 
 class CPiDetector
 {
-	public:
-	CPiDetector()
+	private:
+	CPiDetector(MM::Core& core, MM::Device& device)
 	{
-		std::cout << "Pinging motors..." << endl;
+		core.LogMessage(&device, "Pinging motors...", false);
 
 		m_pMotorList = new int[16];
 		m_pTwisterList = new int[4];
 
-		int error = PingDevices(&piConnectMotor, &piDisconnectMotor, m_pMotorList, 16, &m_iMotorCount);
+		int error = PingDevices(core, device, &piConnectMotor, &piDisconnectMotor, m_pMotorList, 16, &m_iMotorCount);
 		if(error > 1)
-			std::cout << " Error detecting motors: " << error << endl;
+			core.LogMessage(&device, VarFormat(" Error detecting motors: %d", error), false);
 
-		error = PingDevices(&piConnectTwister, &piDisconnectTwister, m_pTwisterList, 4, &m_iTwisterCount);
+		error = PingDevices(core, device, &piConnectTwister, &piDisconnectTwister, m_pTwisterList, 4, &m_iTwisterCount);
 		if(error > 1)
-			std::cout << " Error detecting twisters: " << error << endl;
+			core.LogMessage(&device, VarFormat(" Error detecting twisters: %d", error), false);
 
-		std::cout << "Found " << m_iMotorCount << " motors and " << m_iTwisterCount << " twisters." << endl;
+		core.LogMessage(&device, VarFormat("Found %d motors and %d twisters.", m_iMotorCount, m_iTwisterCount), false);
 	}
 
+	~CPiDetector()
+	{
+		delete[] m_pMotorList;
+		delete[] m_pTwisterList;
+	}
+
+	public:
 	int GetMotorSerial(int idx)
 	{
 		if(idx < m_iMotorCount)
@@ -106,14 +113,8 @@ class CPiDetector
 		return -1;
 	}
 
-	~CPiDetector()
-	{
-		delete[] m_pMotorList;
-		delete[] m_pTwisterList;
-	}
-
 	private:
-	int PingDevices(void* (__stdcall* connfn)(int*, int), void (__stdcall* discfn)(void*), int* pOutArray, const int iMax, int* pOutCount)
+	int PingDevices(MM::Core& core, MM::Device& device, void* (__stdcall* connfn)(int*, int), void (__stdcall* discfn)(void*), int* pOutArray, const int iMax, int* pOutCount)
 	{
 		void* handle = NULL;
 		int error = 0;
@@ -128,7 +129,7 @@ class CPiDetector
 			}
 			else if(error > 1)
 			{
-				std::cout << "Error scanning index " << idx << ": " << error << "" << endl;
+				core.LogMessage(&device, VarFormat("Error scanning index %d: %d", idx, error), false);
 				*pOutCount = count;
 				return error;
 			}
@@ -138,14 +139,26 @@ class CPiDetector
 		return 0;
 	}
 
-	int*	m_pMotorList;
-	int		m_iMotorCount;
+	int *m_pMotorList;
+	int m_iMotorCount;
 
-	int*	m_pTwisterList;
-	int		m_iTwisterCount;
+	int *m_pTwisterList;
+	int m_iTwisterCount;
+
+	private:
+	static CPiDetector *pPiDetector;
+
+	public:
+	static CPiDetector *GetInstance(MM::Core& core, MM::Device& device)
+	{
+		if(pPiDetector == NULL)
+			pPiDetector = new CPiDetector(core, device);
+
+		return pPiDetector;
+	}
 };
 
-static CPiDetector* g_pPiDetector = new CPiDetector();
+CPiDetector* CPiDetector::pPiDetector;
 
 ///////////////////////////////////////////////////////////////////////////////
 // Exported MMDevice API
@@ -168,11 +181,7 @@ MODULE_API void InitializeModuleData()
 	static bool bMessaged = false;
 
 	if(!bMessaged) {
-#ifdef WIN32
-		MessageBoxA(NULL, "The PicardStage device adapter has been built in DEBUG MODE. This version should NEVER be uploaded to the update site!\nIf you obtained this file as a result of an update to Fiji, please contact tine mailing list (openspim@openspim.org) immediately. Thank you.\n", "Warning", MB_OK | MB_ICONWARNING);
-#else
 		std::cout << "WARNING: The PicardStage device adapter has been built in DEBUG MODE. This version should NOT be uploaded to the update site!" << endl;
-#endif
 		bMessaged = true;
 	}
 #endif
@@ -212,7 +221,7 @@ MODULE_API void DeleteDevice(MM::Device* pDevice)
 // The twister
 
 CSIABTwister::CSIABTwister()
-: serial_(g_pPiDetector->GetTwisterSerial(0)), handle_(NULL)
+: serial_(-1), handle_(NULL)
 {
 	char buf[16];
 	itoa(serial_, buf, 10);
@@ -230,7 +239,15 @@ int CSIABTwister::OnSerialNumber(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
 	if (eAct == MM::BeforeGet)
 	{
-		// instead of relying on stored state we could actually query the device
+		if(serial_ < 0)
+		{
+			serial_ = CPiDetector::GetInstance(*GetCoreCallback(), *this)->GetTwisterSerial(0); // Usually only 1 twister.
+
+			int error = Initialize();
+			if(error != DEVICE_OK)
+				return error;
+		}
+
 		pProp->Set((long)serial_);
 	}
 	else if (eAct == MM::AfterSet)
@@ -274,13 +291,12 @@ int CSIABTwister::Initialize()
 {
 	int error = -1;
 	handle_ = piConnectTwister(&error, serial_);
+
 	if (handle_)
 		piGetTwisterVelocity(&velocity_, handle_);
-	else {
-		std::ostringstream buffer;
-		buffer << "Could not initialize twister " << serial_ << " (error code " << error << ")";
-		LogMessage(buffer.str().c_str(), false);
-	}
+	else
+		LogMessage(VarFormat("Could not initialize twister %d (error code %d)", serial_, error), false);
+
 	return handle_ ? 0 : 1;
 }
 
@@ -320,7 +336,7 @@ int CSIABTwister::SetPositionUm(double pos)
 		};
 
 		if(CLOCKDIFF(last, start) >= MAX_WAIT)
-			LogMessage(VarLog("Long wait (twister): %d / %d (%d != %d).", last - start, (int)(MAX_WAIT*CLOCKS_PER_SEC), at, (int)pos), true);
+			LogMessage(VarFormat("Long wait (twister): %d / %d (%d != %d).", last - start, (int)(MAX_WAIT*CLOCKS_PER_SEC), at, (int)pos), true);
 	};
 
 	return moveret;
@@ -416,7 +432,7 @@ bool CSIABTwister::IsContinuousFocusDrive() const
 // The Stage
 
 CSIABStage::CSIABStage()
-: serial_(g_pPiDetector->GetMotorSerial(2)), handle_(NULL)
+: serial_(-1), handle_(NULL)
 {
 	char buf[16];
 	itoa(serial_, buf, 10);
@@ -447,6 +463,16 @@ int CSIABStage::OnSerialNumber(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
 	if (eAct == MM::BeforeGet)
 	{
+		if(serial_ < 0)
+		{
+			// Index derived via magic. (The Z stage is presumed to be the 3rd index in numerical order.)
+			serial_ = CPiDetector::GetInstance(*GetCoreCallback(), *this)->GetMotorSerial(2);
+
+			int error = Initialize();
+			if(error != DEVICE_OK)
+				return error;
+		}
+
 		// instead of relying on stored state we could actually query the device
 		pProp->Set((long)serial_);
 	}
@@ -512,11 +538,9 @@ int CSIABStage::Initialize()
 	handle_ = piConnectMotor(&error, serial_);
 	if (handle_)
 		piGetMotorVelocity(&velocity_, handle_);
-	else {
-		std::ostringstream buffer;
-		buffer << "Could not initialize motor " << serial_ << " (error code " << error << ")";
-		LogMessage(buffer.str().c_str(), false);
-	}
+	else
+		LogMessage(VarFormat("Could not initialize motor %i (error code %i)", serial_, error));
+
 	return handle_ ? 0 : 1;
 }
 
@@ -570,7 +594,7 @@ int CSIABStage::SetPositionUm(double pos)
 		};
 
 		if(CLOCKDIFF(last, start) >= MAX_WAIT)
-			LogMessage(VarLog("Long wait (Z stage): %d / %d (%d != %d).", last - start, (int)(MAX_WAIT*CLOCKS_PER_SEC), at, to), true);
+			LogMessage(VarFormat("Long wait (Z stage): %d / %d (%d != %d).", last - start, (int)(MAX_WAIT*CLOCKS_PER_SEC), at, to), true);
 	};
 
 	return moveret;
@@ -682,7 +706,7 @@ enum XYSTAGE_ERRORS {
 };
 
 CSIABXYStage::CSIABXYStage()
-: serialX_(g_pPiDetector->GetMotorSerial(1)), serialY_(g_pPiDetector->GetMotorSerial(0)),
+: serialX_(-1), serialY_(-1),
   handleX_(NULL), handleY_(NULL), minX_(1), minY_(1), maxX_(8000), maxY_(8000)
 {
 	char buf[16];
@@ -754,7 +778,7 @@ int CSIABXYStage::InitStage(void** handleptr, int newserial)
 	if(*handleptr != NULL) {
 		piGetMotorVelocity(velptr, *handleptr);
 	} else {
-		LogMessage(VarLog("Could not initialize motor %d (error code %d)\n", newserial, error));
+		LogMessage(VarFormat("Could not initialize motor %d (error code %d)\n", newserial, error));
 		return DEVICE_ERR;
 	}
 
@@ -773,7 +797,14 @@ int CSIABXYStage::OnSerialNumberX(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
 	if (eAct == MM::BeforeGet)
 	{
-		// instead of relying on stored state we could actually query the device
+		if(serialX_ < 0)
+		{
+			serialX_ = CPiDetector::GetInstance(*GetCoreCallback(), *this)->GetMotorSerial(0); // X is (usually) the first stage serial.
+
+			if(InitStage(&handleX_, serialX_) != DEVICE_OK)
+				return XYERR_INIT_X;
+		}
+
 		pProp->Set((long)serialX_);
 	}
 	else if (eAct == MM::AfterSet)
@@ -791,7 +822,14 @@ int CSIABXYStage::OnSerialNumberY(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
 	if (eAct == MM::BeforeGet)
 	{
-		// instead of relying on stored state we could actually query the device
+		if(serialY_ < 0)
+		{
+			serialY_ = CPiDetector::GetInstance(*GetCoreCallback(), *this)->GetMotorSerial(1); // And Y is (usually) the second stage serial.
+
+			if(InitStage(&handleY_, serialY_) != DEVICE_OK)
+				return XYERR_INIT_Y;
+		}
+
 		pProp->Set((long)serialY_);
 	}
 	else if (eAct == MM::AfterSet)
@@ -975,7 +1013,7 @@ int CSIABXYStage::SetPositionUm(double x, double y)
 		};
 
 		if(CLOCKDIFF(last, start) >= MAX_WAIT)
-			LogMessage(VarLog("Long wait (XY): %d / %d (%d != %d || %d != %d).", last - start, (int)(MAX_WAIT*CLOCKS_PER_SEC), atX, toX, atY, toY), true);
+			LogMessage(VarFormat("Long wait (XY): %d / %d (%d != %d || %d != %d).", last - start, (int)(MAX_WAIT*CLOCKS_PER_SEC), atX, toX, atY, toY), true);
 	};
 
 	return moveX | moveY;
