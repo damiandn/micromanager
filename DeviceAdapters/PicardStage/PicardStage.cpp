@@ -40,9 +40,11 @@ const char* g_XYAdapterDeviceName = "Picard XY Stage Adapter";
 const char* g_Keyword_SerialNumber = "Serial Number";
 const char* g_Keyword_SerialNumberX = "Serial Number (X)";
 const char* g_Keyword_SerialNumberY = "Serial Number (Y)";
+const char* g_Keyword_Min = "Min";
 const char* g_Keyword_MinX = "X-Min";
-const char* g_Keyword_MaxX = "X-Max";
 const char* g_Keyword_MinY = "Y-Min";
+const char* g_Keyword_Max = "Max";
+const char* g_Keyword_MaxX = "X-Max";
 const char* g_Keyword_MaxY = "Y-Max";
 const char* g_Keyword_Velocity = "Velocity";
 const char* g_Keyword_VelocityX = "X-Velocity";
@@ -211,17 +213,17 @@ MODULE_API MM::Device* CreateDevice(const char* deviceName)
 	// decide which device class to create based on the deviceName parameter
 	if (strcmp(deviceName, g_TwisterDeviceName) == 0)
 	{
-		// create stage
+		// create twister
 		return new CSIABTwister();
 	}
 	else if (strcmp(deviceName, g_StageDeviceName) == 0)
 	{
 		// create stage
-	return new CSIABStage();
+		return new CSIABStage();
 	}
 	else if (strcmp(deviceName, g_XYStageDeviceName) == 0)
 	{
-		// create stage
+		// create X/Y stage
 		return new CSIABXYStage();
 	}
 
@@ -245,6 +247,18 @@ CSIABTwister::CSIABTwister()
 	CPropertyAction* pAct = new CPropertyAction (this, &CSIABTwister::OnSerialNumber);
 	CreateProperty(g_Keyword_SerialNumber, buf, MM::String, false, pAct, true);
 	SetErrorText(1, "Could not initialize twister");
+
+	_itoa(MOTOR_MAX_VELOCITY, buf, 10);
+	CreateProperty(g_Keyword_Velocity, buf, MM::Integer, false, new CPropertyAction(this, &CSIABTwister::OnVelocity), false);
+	vector<string> vels;
+	GenerateAllowedVelocities(vels);
+	SetAllowedValues(g_Keyword_Velocity, vels);
+
+	_itoa(LOWER_TWISTER_LIMIT, buf, 10);
+	CreateProperty(g_Keyword_Min, buf, MM::Integer, true);
+
+	_itoa(UPPER_TWISTER_LIMIT, buf, 10);
+	CreateProperty(g_Keyword_Max, buf, MM::Integer, true);
 }
 
 CSIABTwister::~CSIABTwister()
@@ -275,6 +289,21 @@ int CSIABTwister::OnSerialNumber(MM::PropertyBase* pProp, MM::ActionType eAct)
 		return Initialize();
 	}
 
+	return DEVICE_OK;
+}
+
+int CSIABTwister::OnVelocity(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+	if (eAct == MM::BeforeGet)
+	{
+		pProp->Set((long)velocity_);
+	}
+	else if (eAct == MM::AfterSet)
+	{
+		long velocity;
+		pProp->Get(velocity);
+		velocity_ = (int)velocity;
+	}
 	return DEVICE_OK;
 }
 
@@ -456,7 +485,7 @@ CSIABStage::CSIABStage()
 	CreateProperty(g_Keyword_SerialNumber, buf, MM::Integer, false, new CPropertyAction (this, &CSIABStage::OnSerialNumber), true);
 
 	CreateProperty(g_Keyword_Velocity, "10", MM::Integer, false, new CPropertyAction (this, &CSIABStage::OnVelocity), false);
-	std::vector<std::string> allowed_velocities ();
+	std::vector<std::string> allowed_velocities;
 	GenerateAllowedVelocities(allowed_velocities);
 	SetAllowedValues(g_Keyword_Velocity, allowed_velocities);
 
