@@ -4,10 +4,10 @@
 // SUBSYSTEM:     DeviceAdapters
 //-----------------------------------------------------------------------------
 // DESCRIPTION:   The drivers required for the Picard Industries USB stages
-//                
-// AUTHOR:        Johannes Schindelin, 2014
 //
-// COPYRIGHT:     Johannes Schindelin, 2014
+// AUTHOR:        Johannes Schindelin, 2011; Luke Stuyvenberg, 2011 - 2014
+//
+// COPYRIGHT:     Johannes Schindelin, Copyright (C) 2011 - 2014
 // LICENSE:       This file is distributed under the BSD license.
 //                License text is included with the source distribution.
 //

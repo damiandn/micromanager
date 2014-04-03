@@ -6,10 +6,9 @@
 // DESCRIPTION:   The drivers for the Picard Industries USB stages
 //                Based on the CDemoStage and CDemoXYStage classes
 //                
-// AUTHOR:        Johannes Schindelin
+// AUTHOR:        Johannes Schindelin 2011, Luke Stuyvenberg 2011 - 2014
 //
-// COPYRIGHT:     Johannes Schindelin, 2014
-//
+// COPYRIGHT:     Johannes Schindelin, Copyright (C) 2011 - 2014
 // LICENSE:       This file is distributed under the BSD license.
 //                License text is included with the source distribution.
 //
