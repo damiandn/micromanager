@@ -53,16 +53,27 @@ const char* g_Keyword_StepSize = "StepSize";
 const char* g_Keyword_StepSizeX = "X-StepSize";
 const char* g_Keyword_StepSizeY = "Y-StepSize";
 
+#define TO_STRING_INTERNAL(x) #x
+#define FIXED_TO_STRING(x) TO_STRING_INTERNAL(x)
+
 #define CLOCKDIFF(now, then) (((double)(now) - (double)(then))/((double)(CLOCKS_PER_SEC)))
 #define MAX_WAIT 0.05 // Maximum time to wait for the motors to begin motion, in seconds.
 
-#define MAX_IDX 250
+// These constants are per the Picard Industries documentation.
+#define TWISTER_STEP_SIZE 1.8 // deg/step
+#define TWISTER_LOWER_LIMIT (-32767 * TWISTER_STEP_SIZE)
+#define TWISTER_UPPER_LIMIT (32767 * TWISTER_STEP_SIZE)
 
-#define LOWER_TWISTER_LIMIT -32767
-#define UPPER_TWISTER_LIMIT 32767
+#define MOTOR_STEP_SIZE 1.5 // um/step
+#define MOTOR_LOWER_LIMIT (0 * MOTOR_STEP_SIZE)
+#define MOTOR_UPPER_LIMIT (8000 * MOTOR_STEP_SIZE)
 
-#define MOTOR_MIN_VELOCITY 1
-#define MOTOR_MAX_VELOCITY 10
+// These apply to both motors and twisters.
+#define PICARD_MIN_VELOCITY 1
+#define PICARD_MAX_VELOCITY 10
+
+#define DEFAULT_SERIAL_UNKNOWN -1 // This is the default serial value, before serial numbers are pinged.
+#define MAX_SERIAL_IDX 250 // Highest serial number index to ping.
 
 #define PICARDSTAGE_ERROR_OFFSET 1327 // Error codes are unique to device classes, but MM defines some basic ones (see MMDeviceConstants.h). Make sure we're past them.
 
@@ -129,7 +140,7 @@ class CPiDetector
 		void* handle = NULL;
 		int error = 0;
 		int count = 0;
-		for(int idx = 0; idx < MAX_IDX && count < iMax; ++idx)
+		for(int idx = 0; idx < MAX_SERIAL_IDX && count < iMax; ++idx)
 		{
 			if((handle = (*connfn)(&error, idx)) != NULL && error <= 1)
 			{
@@ -174,7 +185,7 @@ inline static void GenerateAllowedVelocities(vector<string>& vels)
 {
 	vels.clear();
 
-	for(int i = MOTOR_MIN_VELOCITY; i <= MOTOR_MAX_VELOCITY; ++i)
+	for(int i = PICARD_MIN_VELOCITY; i <= PICARD_MAX_VELOCITY; ++i)
 		vels.push_back(VarFormat("%d", i));
 }
 
@@ -239,26 +250,19 @@ MODULE_API void DeleteDevice(MM::Device* pDevice)
 // The twister
 
 CSIABTwister::CSIABTwister()
-: serial_(-1), handle_(NULL)
+: serial_(DEFAULT_SERIAL_UNKNOWN), handle_(NULL)
 {
-	char buf[16];
-	_itoa(serial_, buf, 10);
-
 	CPropertyAction* pAct = new CPropertyAction (this, &CSIABTwister::OnSerialNumber);
-	CreateProperty(g_Keyword_SerialNumber, buf, MM::String, false, pAct, true);
+	CreateProperty(g_Keyword_SerialNumber, FIXED_TO_STRING(DEFAULT_SERIAL_UNKNOWN), MM::String, false, pAct, true);
 	SetErrorText(1, "Could not initialize twister");
 
-	_itoa(MOTOR_MAX_VELOCITY, buf, 10);
-	CreateProperty(g_Keyword_Velocity, buf, MM::Integer, false, new CPropertyAction(this, &CSIABTwister::OnVelocity), false);
+	CreateProperty(g_Keyword_Velocity, FIXED_TO_STRING(MOTOR_MAX_VELOCITY), MM::Integer, false, new CPropertyAction(this, &CSIABTwister::OnVelocity), false);
 	vector<string> vels;
 	GenerateAllowedVelocities(vels);
 	SetAllowedValues(g_Keyword_Velocity, vels);
 
-	_itoa(LOWER_TWISTER_LIMIT, buf, 10);
-	CreateProperty(g_Keyword_Min, buf, MM::Integer, true);
-
-	_itoa(UPPER_TWISTER_LIMIT, buf, 10);
-	CreateProperty(g_Keyword_Max, buf, MM::Integer, true);
+	CreateProperty(g_Keyword_Min, FIXED_TO_STRING(TWISTER_LOWER_LIMIT), MM::Integer, false, NULL, true);
+	CreateProperty(g_Keyword_Max, FIXED_TO_STRING(TWISTER_UPPER_LIMIT), MM::Integer, false, NULL, true);
 }
 
 CSIABTwister::~CSIABTwister()
@@ -427,8 +431,8 @@ int CSIABTwister::SetOrigin()
 
 int CSIABTwister::GetLimits(double& lower, double& upper)
 {
-	lower = LOWER_TWISTER_LIMIT;
-	upper = UPPER_TWISTER_LIMIT;
+	lower = TWISTER_LOWER_LIMIT;
+	upper = TWISTER_UPPER_LIMIT;
 	return DEVICE_OK;
 }
 
@@ -477,19 +481,16 @@ bool CSIABTwister::IsContinuousFocusDrive() const
 // The Stage
 
 CSIABStage::CSIABStage()
-: serial_(-1), handle_(NULL)
+: serial_(DEFAULT_SERIAL_UNKNOWN), handle_(NULL)
 {
-	char buf[16];
-	_itoa(serial_, buf, 10);
+	CreateProperty(g_Keyword_SerialNumber, FIXED_TO_STRING(DEFAULT_SERIAL_UNKNOWN), MM::Integer, false, new CPropertyAction (this, &CSIABStage::OnSerialNumber), true);
 
-	CreateProperty(g_Keyword_SerialNumber, buf, MM::Integer, false, new CPropertyAction (this, &CSIABStage::OnSerialNumber), true);
-
-	CreateProperty(g_Keyword_Velocity, "10", MM::Integer, false, new CPropertyAction (this, &CSIABStage::OnVelocity), false);
+	CreateProperty(g_Keyword_Velocity, FIXED_TO_STRING(MOTOR_MAX_VELOCITY), MM::Integer, false, new CPropertyAction (this, &CSIABStage::OnVelocity), false);
 	std::vector<std::string> allowed_velocities;
 	GenerateAllowedVelocities(allowed_velocities);
 	SetAllowedValues(g_Keyword_Velocity, allowed_velocities);
 
-	CreateProperty(g_Keyword_StepSize, "1.5", MM::Float, false);
+	CreateProperty(g_Keyword_StepSize, FIXED_TO_STRING(MOTOR_STEP_SIZE), MM::Float, false);
 
 	SetErrorText(1, "Could not initialize motor (Z stage)");
 }
@@ -745,37 +746,31 @@ enum XYSTAGE_ERRORS {
 };
 
 CSIABXYStage::CSIABXYStage()
-: serialX_(-1), serialY_(-1),
-  handleX_(NULL), handleY_(NULL), minX_(1), minY_(1), maxX_(8000), maxY_(8000)
+: serialX_(DEFAULT_SERIAL_UNKNOWN), serialY_(DEFAULT_SERIAL_UNKNOWN), handleX_(NULL), handleY_(NULL)
 {
-	char buf[16];
-
-	_itoa(serialX_, buf, 10);
-	CreateProperty(g_Keyword_SerialNumberX, buf, MM::Integer, false, new CPropertyAction (this, &CSIABXYStage::OnSerialNumberX), true);
-
-	_itoa(serialY_, buf, 10);
-	CreateProperty(g_Keyword_SerialNumberY, buf, MM::Integer, false, new CPropertyAction (this, &CSIABXYStage::OnSerialNumberY), true);
+	CreateProperty(g_Keyword_SerialNumberX, FIXED_TO_STRING(DEFAULT_SERIAL_UNKNOWN), MM::Integer, false, new CPropertyAction (this, &CSIABXYStage::OnSerialNumberX), true);
+	CreateProperty(g_Keyword_SerialNumberY, FIXED_TO_STRING(DEFAULT_SERIAL_UNKNOWN), MM::Integer, false, new CPropertyAction (this, &CSIABXYStage::OnSerialNumberY), true);
 
 	SetErrorText(XYERR_INIT_X, "Could not initialize motor (X stage)");
 	SetErrorText(XYERR_INIT_Y, "Could not initialize motor (Y stage)");
 	SetErrorText(XYERR_MOVE_X, "X stage out of range.");
 	SetErrorText(XYERR_MOVE_Y, "Y stage out of range.");
 
-	CreateProperty(g_Keyword_VelocityX, "10", MM::Integer, false, new CPropertyAction(this, &CSIABXYStage::OnVelocityX), false);
-	CreateProperty(g_Keyword_VelocityY, "10", MM::Integer, false, new CPropertyAction(this, &CSIABXYStage::OnVelocityY), false);
+	CreateProperty(g_Keyword_VelocityX, FIXED_TO_STRING(MOTOR_MAX_VELOCITY), MM::Integer, false, new CPropertyAction(this, &CSIABXYStage::OnVelocityX), false);
+	CreateProperty(g_Keyword_VelocityY, FIXED_TO_STRING(MOTOR_MAX_VELOCITY), MM::Integer, false, new CPropertyAction(this, &CSIABXYStage::OnVelocityY), false);
 
 	std::vector<std::string> allowed_values = std::vector<std::string>();
 	GenerateAllowedVelocities(allowed_values);
 	SetAllowedValues(g_Keyword_VelocityX, allowed_values);
 	SetAllowedValues(g_Keyword_VelocityY, allowed_values);
 
-	CreateProperty(g_Keyword_MinX, "0", MM::Integer, false, new CPropertyAction(this, &CSIABXYStage::OnMinX), true);
-	CreateProperty(g_Keyword_MaxX, "8000", MM::Integer, false, new CPropertyAction(this, &CSIABXYStage::OnMaxX), true);
-	CreateProperty(g_Keyword_MinY, "0", MM::Integer, false, new CPropertyAction(this, &CSIABXYStage::OnMinY), true);
-	CreateProperty(g_Keyword_MaxY, "8000", MM::Integer, false, new CPropertyAction(this, &CSIABXYStage::OnMaxY), true);
+	CreateProperty(g_Keyword_MinX, FIXED_TO_STRING(MOTOR_LOWER_LIMIT), MM::Integer, false, new CPropertyAction(this, &CSIABXYStage::OnMinX), true);
+	CreateProperty(g_Keyword_MaxX, FIXED_TO_STRING(MOTOR_UPPER_LIMIT), MM::Integer, false, new CPropertyAction(this, &CSIABXYStage::OnMaxX), true);
+	CreateProperty(g_Keyword_MinY, FIXED_TO_STRING(MOTOR_LOWER_LIMIT), MM::Integer, false, new CPropertyAction(this, &CSIABXYStage::OnMinY), true);
+	CreateProperty(g_Keyword_MaxY, FIXED_TO_STRING(MOTOR_UPPER_LIMIT), MM::Integer, false, new CPropertyAction(this, &CSIABXYStage::OnMaxY), true);
 
-	CreateProperty(g_Keyword_StepSizeX, "1.5", MM::Float, false);
-	CreateProperty(g_Keyword_StepSizeY, "1.5", MM::Float, false);
+	CreateProperty(g_Keyword_StepSizeX, FIXED_TO_STRING(MOTOR_STEP_SIZE), MM::Float, false, NULL, true);
+	CreateProperty(g_Keyword_StepSizeY, FIXED_TO_STRING(MOTOR_STEP_SIZE), MM::Float, false, NULL, true);
 }
 
 CSIABXYStage::~CSIABXYStage()
