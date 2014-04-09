@@ -263,6 +263,8 @@ CSIABTwister::CSIABTwister()
 
 	CreateProperty(g_Keyword_Min, FIXED_TO_STRING(TWISTER_LOWER_LIMIT), MM::Integer, false, NULL, true);
 	CreateProperty(g_Keyword_Max, FIXED_TO_STRING(TWISTER_UPPER_LIMIT), MM::Integer, false, NULL, true);
+
+	CreateProperty(g_Keyword_StepSize, FIXED_TO_STRING(TWISTER_STEP_SIZE), MM::Float, false, NULL, true);
 }
 
 CSIABTwister::~CSIABTwister()
@@ -368,7 +370,7 @@ int CSIABTwister::SetPositionUm(double pos)
 	if(handle_ == NULL)
 		return DEVICE_ERR;
 
-	int moveret = piRunTwisterToPosition((int)pos, velocity_, handle_);
+	int moveret = piRunTwisterToPosition((int)(pos / GetStepSizeUm()), velocity_, handle_);
 
 	int at = 0;
 	if(piGetTwisterPosition(&at, handle_) != PI_NO_ERROR)
@@ -412,6 +414,19 @@ int CSIABTwister::GetPositionUm(double& pos)
 		return DEVICE_ERR;
 	pos = position;
 	return DEVICE_OK;
+}
+
+double CSIABTwister::GetStepSizeUm()
+{
+	int error = DEVICE_OK;
+	double stepsize = TWISTER_STEP_SIZE;
+
+	if((error = GetProperty(g_Keyword_StepSize, stepsize)) != DEVICE_OK)
+		return error;
+
+	// This is technically wrong, since the step size is not in um, but in degrees.
+	// MM does not have a concept of a rotational stage, however, so 'overload' this.
+	return stepsize;
 }
 
 int CSIABTwister::SetPositionSteps(long steps)
@@ -490,7 +505,7 @@ CSIABStage::CSIABStage()
 	GenerateAllowedVelocities(allowed_velocities);
 	SetAllowedValues(g_Keyword_Velocity, allowed_velocities);
 
-	CreateProperty(g_Keyword_StepSize, FIXED_TO_STRING(MOTOR_STEP_SIZE), MM::Float, false);
+	CreateProperty(g_Keyword_StepSize, FIXED_TO_STRING(MOTOR_STEP_SIZE), MM::Float, false, NULL, true);
 
 	SetErrorText(1, "Could not initialize motor (Z stage)");
 }
