@@ -23,7 +23,7 @@
 #ifndef _PICARDSTAGE_H_
 #define _PICARDSTAGE_H_
 
-#include "DeviceBase.h"
+#include "../../MMDevice/DeviceBase.h"
 
 //////////////////////////////////////////////////////////////////////////////
 // CSIABTwister class

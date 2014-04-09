@@ -21,7 +21,7 @@
 
 #include <iostream>
 
-#include "ModuleInterface.h"
+#include "../../MMDevice/ModuleInterface.h"
 #include "PiUsb.h"
 
 #include "PicardStage.h"
