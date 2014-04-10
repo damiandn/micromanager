@@ -370,7 +370,17 @@ int CSIABTwister::SetPositionUm(double pos)
 	if(handle_ == NULL)
 		return DEVICE_ERR;
 
-	int moveret = piRunTwisterToPosition((int)(pos / GetStepSizeUm()), velocity_, handle_);
+	double min = MOTOR_LOWER_LIMIT, max = MOTOR_UPPER_LIMIT;
+	int error = DEVICE_OK;
+
+	if((error = GetLimits(min, max)) != DEVICE_OK)
+		return error;
+
+	pos = (pos < min ? min : (pos > max ? max : pos)); // Clamp to min..max
+
+	int to = (int)(pos / GetStepSizeUm());
+
+	int moveret = piRunTwisterToPosition(to, velocity_, handle_);
 
 	int at = 0;
 	if(piGetTwisterPosition(&at, handle_) != PI_NO_ERROR)
@@ -446,8 +456,14 @@ int CSIABTwister::SetOrigin()
 
 int CSIABTwister::GetLimits(double& lower, double& upper)
 {
-	lower = TWISTER_LOWER_LIMIT;
-	upper = TWISTER_UPPER_LIMIT;
+	int error = DEVICE_OK;
+
+	if((error = GetProperty(g_Keyword_Min, lower)) != DEVICE_OK)
+		return error;
+
+	if((error = GetProperty(g_Keyword_Max, upper)) != DEVICE_OK)
+		return error;
+
 	return DEVICE_OK;
 }
 
@@ -506,6 +522,9 @@ CSIABStage::CSIABStage()
 	SetAllowedValues(g_Keyword_Velocity, allowed_velocities);
 
 	CreateProperty(g_Keyword_StepSize, FIXED_TO_STRING(MOTOR_STEP_SIZE), MM::Float, false, NULL, true);
+
+	CreateProperty(g_Keyword_Min, FIXED_TO_STRING(MOTOR_LOWER_LIMIT), MM::Integer, false, NULL, true);
+	CreateProperty(g_Keyword_Max, FIXED_TO_STRING(MOTOR_UPPER_LIMIT), MM::Integer, false, NULL, true);
 
 	SetErrorText(1, "Could not initialize motor (Z stage)");
 }
@@ -628,6 +647,14 @@ int CSIABStage::SetPositionUm(double pos)
 	if(handle_ == NULL)
 		return DEVICE_ERR;
 
+	double min = MOTOR_LOWER_LIMIT, max = MOTOR_UPPER_LIMIT;
+	int error = DEVICE_OK;
+
+	if((error = GetLimits(min, max)) != DEVICE_OK)
+		return error;
+
+	pos = (pos < min ? min : (pos > max ? max : pos)); // Clamp to min..max
+
 	int to = (int)(pos / GetStepSizeUm());
 
 	int moveret = piRunMotorToPosition(to, velocity_, handle_);
@@ -705,10 +732,15 @@ int CSIABStage::SetOrigin()
 
 int CSIABStage::GetLimits(double& lower, double& upper)
 {
-	lower = 1;
-	// TODO: make this a property; the USB Motor I has an upper limit of 2000
-	upper = 8000;
-	return 0;
+	int error = DEVICE_OK;
+
+	if((error = GetProperty(g_Keyword_Min, lower)) != DEVICE_OK)
+		return error;
+
+	if((error = GetProperty(g_Keyword_Max, upper)) != DEVICE_OK)
+		return error;
+
+	return DEVICE_OK;
 }
 
 int CSIABStage::IsStageSequenceable(bool& isSequenceable) const
@@ -779,10 +811,10 @@ CSIABXYStage::CSIABXYStage()
 	SetAllowedValues(g_Keyword_VelocityX, allowed_values);
 	SetAllowedValues(g_Keyword_VelocityY, allowed_values);
 
-	CreateProperty(g_Keyword_MinX, FIXED_TO_STRING(MOTOR_LOWER_LIMIT), MM::Integer, false, new CPropertyAction(this, &CSIABXYStage::OnMinX), true);
-	CreateProperty(g_Keyword_MaxX, FIXED_TO_STRING(MOTOR_UPPER_LIMIT), MM::Integer, false, new CPropertyAction(this, &CSIABXYStage::OnMaxX), true);
-	CreateProperty(g_Keyword_MinY, FIXED_TO_STRING(MOTOR_LOWER_LIMIT), MM::Integer, false, new CPropertyAction(this, &CSIABXYStage::OnMinY), true);
-	CreateProperty(g_Keyword_MaxY, FIXED_TO_STRING(MOTOR_UPPER_LIMIT), MM::Integer, false, new CPropertyAction(this, &CSIABXYStage::OnMaxY), true);
+	CreateProperty(g_Keyword_MinX, FIXED_TO_STRING(MOTOR_LOWER_LIMIT), MM::Integer, false, NULL, true);
+	CreateProperty(g_Keyword_MaxX, FIXED_TO_STRING(MOTOR_UPPER_LIMIT), MM::Integer, false, NULL, true);
+	CreateProperty(g_Keyword_MinY, FIXED_TO_STRING(MOTOR_LOWER_LIMIT), MM::Integer, false, NULL, true);
+	CreateProperty(g_Keyword_MaxY, FIXED_TO_STRING(MOTOR_UPPER_LIMIT), MM::Integer, false, NULL, true);
 
 	CreateProperty(g_Keyword_StepSizeX, FIXED_TO_STRING(MOTOR_STEP_SIZE), MM::Float, false, NULL, true);
 	CreateProperty(g_Keyword_StepSizeY, FIXED_TO_STRING(MOTOR_STEP_SIZE), MM::Float, false, NULL, true);
@@ -881,46 +913,6 @@ int CSIABXYStage::OnSerialNumberY(MM::PropertyBase* pProp, MM::ActionType eAct)
 	return DEVICE_OK;
 }
 
-int CSIABXYStage::OnMinX(MM::PropertyBase *pProp, MM::ActionType eAct)
-{
-	if (eAct == MM::BeforeGet)
-		pProp->Set((long)minX_);
-	else if (eAct == MM::AfterSet)
-		pProp->Get((long&)minX_);
-
-	return DEVICE_OK;
-}
-
-int CSIABXYStage::OnMaxX(MM::PropertyBase *pProp, MM::ActionType eAct)
-{
-	if (eAct == MM::BeforeGet)
-		pProp->Set((long)maxX_);
-	else if (eAct == MM::AfterSet)
-		pProp->Get((long&)maxX_);
-
-	return DEVICE_OK;
-}
-
-int CSIABXYStage::OnMinY(MM::PropertyBase *pProp, MM::ActionType eAct)
-{
-	if (eAct == MM::BeforeGet)
-		pProp->Set((long)minY_);
-	else if (eAct == MM::AfterSet)
-		pProp->Get((long&)minY_);
-
-	return DEVICE_OK;
-}
-
-int CSIABXYStage::OnMaxY(MM::PropertyBase *pProp, MM::ActionType eAct)
-{
-	if (eAct == MM::BeforeGet)
-		pProp->Set((long)maxY_);
-	else if (eAct == MM::AfterSet)
-		pProp->Get((long&)maxY_);
-
-	return DEVICE_OK;
-}
-
 int CSIABXYStage::OnVelocityX(MM::PropertyBase *pProp, MM::ActionType eAct)
 {
 	if(handleX_ == NULL)
@@ -1014,11 +1006,14 @@ int CSIABXYStage::SetPositionUm(double x, double y)
 	if(handleX_ == NULL || handleY_ == NULL)
 		return DEVICE_ERR;
 
+	double minX = MOTOR_LOWER_LIMIT, maxX = MOTOR_UPPER_LIMIT, minY = MOTOR_LOWER_LIMIT, maxY = MOTOR_UPPER_LIMIT;
+	int error = DEVICE_OK;
 
-	if(x < minX_ || x > maxX_)
-		x = min(maxX_, max(x, minX_));
-	if(y < minY_ || y > maxY_)
-		y = min(maxY_, max(y, minY_));
+	if((error = GetLimitsUm(minX, maxX, minY, maxY)) != DEVICE_OK)
+		return error;
+
+	x = (x < minX ? minX : (x > maxX ? maxX : x));
+	y = (y < minY ? minY : (y > maxY ? maxY : y));
 
 	int toX = (int)(x / GetStepSizeXUm());
 	int toY = (int)(y / GetStepSizeYUm());
@@ -1081,12 +1076,21 @@ int CSIABXYStage::GetPositionUm(double& x, double& y)
 
 int CSIABXYStage::GetLimitsUm(double& xMin, double& xMax, double& yMin, double& yMax)
 {
-	xMin = minX_;
-	xMax = maxX_;
-	yMin = minY_;
-	yMax = maxY_;
+	int error = DEVICE_OK;
 
-	return 0;
+	if((error = GetProperty(g_Keyword_MinX, xMin)) != DEVICE_OK)
+		return error;
+
+	if((error = GetProperty(g_Keyword_MaxX, xMax)) != DEVICE_OK)
+		return error;
+
+	if((error = GetProperty(g_Keyword_MinY, yMin)) != DEVICE_OK)
+		return error;
+
+	if((error = GetProperty(g_Keyword_MaxY, yMax)) != DEVICE_OK)
+		return error;
+
+	return DEVICE_OK;
 }
 
 int CSIABXYStage::Move(double vx, double vy)

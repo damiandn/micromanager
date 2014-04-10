@@ -159,18 +159,12 @@ protected:
 private:
 	int OnSerialNumberX(MM::PropertyBase* pProp, MM::ActionType eAct);
 	int OnSerialNumberY(MM::PropertyBase* pProp, MM::ActionType eAct);
-	int OnMinX(MM::PropertyBase* pProp, MM::ActionType eAct);
-	int OnMaxX(MM::PropertyBase* pProp, MM::ActionType eAct);
-	int OnMinY(MM::PropertyBase* pProp, MM::ActionType eAct);
-	int OnMaxY(MM::PropertyBase* pProp, MM::ActionType eAct);
 	int OnVelocityX(MM::PropertyBase* pProp, MM::ActionType eAct);
 	int OnVelocityY(MM::PropertyBase* pProp, MM::ActionType eAct);
 
 	int serialX_, serialY_;
 	int velocityX_, velocityY_;
 	void *handleX_, *handleY_;
-	int minX_, maxX_;
-	int minY_, maxY_;
 };
 
 #endif //_PICARDSTAGE_H_
