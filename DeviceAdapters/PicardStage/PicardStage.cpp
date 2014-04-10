@@ -1009,27 +1009,19 @@ void CSIABXYStage::GetName(char* name) const
 	CDeviceUtils::CopyLimitedString(name, g_XYStageDeviceName);
 }
 
-void CSIABXYStage::GetOrientation(bool& mirrorX, bool& mirrorY)
-{
-	mirrorX = false;
-	mirrorY = false;
-}
-
 int CSIABXYStage::SetPositionUm(double x, double y)
 {
 	if(handleX_ == NULL || handleY_ == NULL)
 		return DEVICE_ERR;
 
-	bool flipX, flipY;
-	GetOrientation(flipX, flipY);
 
 	if(x < minX_ || x > maxX_)
 		x = min(maxX_, max(x, minX_));
 	if(y < minY_ || y > maxY_)
 		y = min(maxY_, max(y, minY_));
 
-	int toX = (int)((flipX ? (maxX_ - x) + minX_ : x) / GetStepSizeXUm());
-	int toY = (int)((flipY ? (maxY_ - y) + minY_ : y) / GetStepSizeYUm());
+	int toX = (int)(x / GetStepSizeXUm());
+	int toY = (int)(y / GetStepSizeYUm());
 
 	int moveX = piRunMotorToPosition(toX, velocityX_, handleX_);
 	int moveY = piRunMotorToPosition(toY, velocityY_, handleY_) << 1;
@@ -1076,19 +1068,13 @@ int CSIABXYStage::GetPositionUm(double& x, double& y)
 	if(handleX_ == NULL || handleY_ == NULL)
 		return DEVICE_ERR;
 
-	bool flipX, flipY;
-	GetOrientation(flipX, flipY);
-
 	int positionX, positionY;
 	if (piGetMotorPosition(&positionX, handleX_) ||
 			piGetMotorPosition(&positionY, handleY_))
 		return DEVICE_ERR;
 
-	x = flipX ? (maxX_ - positionX) + minX_ : positionX;
-	y = flipY ? (maxY_ - positionY) + minY_ : positionY;
-
-	x = (x < minX_ ? minX_ : (x > maxX_ ? maxX_ : x)) * GetStepSizeXUm();
-	y = (y < minY_ ? minY_ : (y > maxY_ ? maxY_ : y)) * GetStepSizeYUm();
+	x = positionX * GetStepSizeXUm();
+	y = positionY * GetStepSizeYUm();
 
 	return DEVICE_OK;
 }

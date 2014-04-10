@@ -153,8 +153,6 @@ public:
 	int IsXYStageSequenceable(bool& isSequenceable) const;
 
 protected:
-	virtual void GetOrientation(bool& mirrorX, bool& mirrorY);
-
 	int InitStage(void** handleptr, int serial);
 	void ShutdownStage(void** handleptr);
 
