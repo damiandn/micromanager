@@ -189,6 +189,40 @@ inline static void GenerateAllowedVelocities(vector<string>& vels)
 		vels.push_back(VarFormat("%d", i));
 }
 
+// This routine handles a very generic sense of the OnVelocity PropertyAction.
+// Get/set the velocity to a member variable, and optionally invoke PiUsb routines to change the motor's on-board velocity.
+inline static int OnVelocityGeneric(MM::PropertyBase* pProp, MM::ActionType eAct, void* handle, int& velocity, int (__stdcall* pGet)(int*, void*), int (__stdcall* pSet)(int, void*))
+{
+	if(handle == NULL)
+		return eAct == MM::BeforeGet ? DEVICE_OK : DEVICE_ERR;
+
+	switch(eAct)
+	{
+	case MM::BeforeGet:
+		{
+			if(pGet != NULL && (*pGet)(&velocity, handle) != PI_NO_ERROR)
+				return DEVICE_ERR;
+
+			pProp->Set((long)velocity);
+
+			break;
+		}
+	case MM::AfterSet:
+		{
+			long vel_temp = (long) velocity;
+			pProp->Get(vel_temp);
+			velocity = (int)vel_temp;
+
+			if(pSet != NULL && (*pSet)(velocity, handle) != PI_NO_ERROR)
+				return DEVICE_ERR;
+
+			break;
+		}
+	}
+
+	return DEVICE_OK;
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // Exported MMDevice API
 ///////////////////////////////////////////////////////////////////////////////
@@ -300,17 +334,7 @@ int CSIABTwister::OnSerialNumber(MM::PropertyBase* pProp, MM::ActionType eAct)
 
 int CSIABTwister::OnVelocity(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
-	if (eAct == MM::BeforeGet)
-	{
-		pProp->Set((long)velocity_);
-	}
-	else if (eAct == MM::AfterSet)
-	{
-		long velocity;
-		pProp->Get(velocity);
-		velocity_ = (int)velocity;
-	}
-	return DEVICE_OK;
+	return OnVelocityGeneric(pProp, eAct, handle_, velocity_, &piGetTwisterVelocity, NULL);
 }
 
 bool CSIABTwister::Busy()
@@ -564,18 +588,7 @@ int CSIABStage::OnSerialNumber(MM::PropertyBase* pProp, MM::ActionType eAct)
 
 int CSIABStage::OnVelocity(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
-	if (eAct == MM::BeforeGet)
-	{
-		// instead of relying on stored state we could actually query the device
-		pProp->Set((long)velocity_);
-	}
-	else if (eAct == MM::AfterSet)
-	{
-		long velocity;
-		pProp->Get(velocity);
-		velocity_ = (int)velocity;
-	}
-	return DEVICE_OK;
+	return OnVelocityGeneric(pProp, eAct, handle_, velocity_, &piGetMotorVelocity, &piSetMotorVelocity);
 }
 
 bool CSIABStage::Busy()
@@ -915,46 +928,12 @@ int CSIABXYStage::OnSerialNumberY(MM::PropertyBase* pProp, MM::ActionType eAct)
 
 int CSIABXYStage::OnVelocityX(MM::PropertyBase *pProp, MM::ActionType eAct)
 {
-	if(handleX_ == NULL)
-		return (eAct == MM::BeforeGet ? DEVICE_OK : DEVICE_ERR);
-
-	if(eAct == MM::BeforeGet)
-	{
-		if(piGetMotorVelocity(&velocityX_, handleX_) != 0)
-			return DEVICE_ERR;
-
-		pProp->Set((long)velocityX_);
-	}
-	else if(eAct == MM::AfterSet)
-	{
-		pProp->Get((long&)velocityX_);
-
-		return piSetMotorVelocity(velocityX_, handleX_);
-	};
-
-	return DEVICE_OK;
+	return OnVelocityGeneric(pProp, eAct, handleX_, velocityX_, &piGetMotorVelocity, &piSetMotorVelocity);
 }
 
 int CSIABXYStage::OnVelocityY(MM::PropertyBase *pProp, MM::ActionType eAct)
 {
-	if(handleY_ == NULL)
-		return (eAct == MM::BeforeGet ? DEVICE_OK : DEVICE_ERR);
-
-	if(eAct == MM::BeforeGet)
-	{
-		if(piGetMotorVelocity(&velocityY_, handleY_) != 0)
-			return DEVICE_ERR;
-
-		pProp->Set((long)velocityY_);
-	}
-	else if(eAct == MM::AfterSet)
-	{
-		pProp->Get((long&)velocityY_);
-
-		return piSetMotorVelocity(velocityY_, handleY_);
-	};
-
-	return DEVICE_OK;
+	return OnVelocityGeneric(pProp, eAct, handleY_, velocityY_, &piGetMotorVelocity, &piSetMotorVelocity);
 }
 
 bool CSIABXYStage::Busy()
