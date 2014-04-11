@@ -414,7 +414,7 @@ int CSIABTwister::SetPositionUm(double pos)
 	if((error = GetLimits(min, max)) != DEVICE_OK)
 		return error;
 
-	pos = (pos < min ? min : (pos > max ? max : pos)); // Clamp to min..max
+	pos = pos < min ? min : (pos > max ? max : pos); // Clamp to min..max
 
 	int to = (int)(pos / GetStepSizeUm());
 
@@ -657,7 +657,7 @@ int CSIABStage::SetPositionUm(double pos)
 	if((error = GetLimits(min, max)) != DEVICE_OK)
 		return error;
 
-	pos = (pos < min ? min : (pos > max ? max : pos)); // Clamp to min..max
+	pos = pos < min ? min : (pos > max ? max : pos); // Clamp to min..max
 
 	int to = (int)(pos / GetStepSizeUm());
 
@@ -941,8 +941,8 @@ int CSIABXYStage::SetPositionUm(double x, double y)
 	if((error = GetLimitsUm(minX, maxX, minY, maxY)) != DEVICE_OK)
 		return error;
 
-	x = (x < minX ? minX : (x > maxX ? maxX : x));
-	y = (y < minY ? minY : (y > maxY ? maxY : y));
+	x = x < minX ? minX : (x > maxX ? maxX : x);
+	y = y < minY ? minY : (y > maxY ? maxY : y);
 
 	int toX = (int)(x / GetStepSizeXUm());
 	int toY = (int)(y / GetStepSizeYUm());
