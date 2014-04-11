@@ -283,15 +283,6 @@ MODULE_API void InitializeModuleData()
 	RegisterDevice(g_TwisterDeviceName, MM::StageDevice, "Twister");
 	RegisterDevice(g_StageDeviceName, MM::StageDevice, "Z stage");
 	RegisterDevice(g_XYStageDeviceName, MM::XYStageDevice, "XY stage");
-
-#ifdef _DEBUG
-	static bool bMessaged = false;
-
-	if(!bMessaged) {
-		std::cout << "WARNING: The PicardStage device adapter has been built in DEBUG MODE. This version should NOT be uploaded to the update site!" << endl;
-		bMessaged = true;
-	}
-#endif
 }
 
 MODULE_API MM::Device* CreateDevice(const char* deviceName)
