@@ -223,6 +223,50 @@ inline static int OnVelocityGeneric(MM::PropertyBase* pProp, MM::ActionType eAct
 	return DEVICE_OK;
 }
 
+// Similar to the above routine, this one handles the OnSerialNumber PropertyAction.
+inline static int OnSerialGeneric(MM::PropertyBase* pProp, MM::ActionType eAct, MM::Core& core, MM::Device& self, void*& handle, int& serial, bool twister, int serialidx)
+{
+	switch(eAct)
+	{
+	case MM::BeforeGet:
+		{
+			if(serial < 0)
+			{
+				if(twister)
+					serial = CPiDetector::GetInstance(core, self)->GetMotorSerial(serialidx);
+				else
+					serial = CPiDetector::GetInstance(core, self)->GetTwisterSerial(serialidx);
+
+				int error = self.Initialize();
+				if(error != DEVICE_OK)
+					return error;
+			}
+
+			pProp->Set((long)serial);
+		}
+	case MM::AfterSet:
+		{
+			if(handle != NULL)
+			{
+				if(twister)
+					piDisconnectTwister(handle);
+				else
+					piDisconnectMotor(handle);
+
+				handle = NULL;
+			}
+
+			long serial_temp = (long)serial;
+			pProp->Get(serial_temp);
+			serial = (int)serial_temp;
+
+			return self.Initialize();
+		}
+	}
+
+	return DEVICE_OK;
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // Exported MMDevice API
 ///////////////////////////////////////////////////////////////////////////////
@@ -307,29 +351,8 @@ CSIABTwister::~CSIABTwister()
 
 int CSIABTwister::OnSerialNumber(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
-	if (eAct == MM::BeforeGet)
-	{
-		if(serial_ < 0)
-		{
-			serial_ = CPiDetector::GetInstance(*GetCoreCallback(), *this)->GetTwisterSerial(0); // Usually only 1 twister.
-
-			int error = Initialize();
-			if(error != DEVICE_OK)
-				return error;
-		}
-
-		pProp->Set((long)serial_);
-	}
-	else if (eAct == MM::AfterSet)
-	{
-		long serial;
-		pProp->Get(serial);
-		serial_ = (int)serial;
-
-		return Initialize();
-	}
-
-	return DEVICE_OK;
+	// Usually only 1 twister, so expect index 0.
+	return OnSerialGeneric(pProp, eAct, *GetCoreCallback(), *this, handle_, serial_, true, 0);
 }
 
 int CSIABTwister::OnVelocity(MM::PropertyBase* pProp, MM::ActionType eAct)
@@ -559,31 +582,8 @@ CSIABStage::~CSIABStage()
 
 int CSIABStage::OnSerialNumber(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
-	if (eAct == MM::BeforeGet)
-	{
-		if(serial_ < 0)
-		{
-			// Index derived via magic. (The Z stage is presumed to be the 3rd index in numerical order.)
-			serial_ = CPiDetector::GetInstance(*GetCoreCallback(), *this)->GetMotorSerial(2);
-
-			int error = Initialize();
-			if(error != DEVICE_OK)
-				return error;
-		}
-
-		// instead of relying on stored state we could actually query the device
-		pProp->Set((long)serial_);
-	}
-	else if (eAct == MM::AfterSet)
-	{
-		long serial;
-		pProp->Get(serial);
-		serial_ = (int)serial;
-
-		return Initialize();
-	}
-
-	return DEVICE_OK;
+	// Index derived via magic. (The Z stage is presumed to be the 3rd index in numerical order.)
+	return OnSerialGeneric(pProp, eAct, *GetCoreCallback(), *this, handle_, serial_, false, 2);
 }
 
 int CSIABStage::OnVelocity(MM::PropertyBase* pProp, MM::ActionType eAct)
@@ -877,53 +877,12 @@ void CSIABXYStage::ShutdownStage(void** handleptr)
 
 int CSIABXYStage::OnSerialNumberX(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
-	if (eAct == MM::BeforeGet)
-	{
-		if(serialX_ < 0)
-		{
-			serialX_ = CPiDetector::GetInstance(*GetCoreCallback(), *this)->GetMotorSerial(0); // X is (usually) the first stage serial.
-
-			if(InitStage(&handleX_, serialX_) != DEVICE_OK)
-				return XYERR_INIT_X;
-		}
-
-		pProp->Set((long)serialX_);
-	}
-	else if (eAct == MM::AfterSet)
-	{
-		long serial;
-		pProp->Get(serial);
-
-		if(InitStage(&handleX_, serial) != DEVICE_OK)
-			return XYERR_INIT_X;
-	}
-	return DEVICE_OK;
+	return OnSerialGeneric(pProp, eAct, *GetCoreCallback(), *this, handleX_, serialX_, false, 0); // X is (usually) the first stage serial.
 }
 
 int CSIABXYStage::OnSerialNumberY(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
-	if (eAct == MM::BeforeGet)
-	{
-		if(serialY_ < 0)
-		{
-			serialY_ = CPiDetector::GetInstance(*GetCoreCallback(), *this)->GetMotorSerial(1); // And Y is (usually) the second stage serial.
-
-			if(InitStage(&handleY_, serialY_) != DEVICE_OK)
-				return XYERR_INIT_Y;
-		}
-
-		pProp->Set((long)serialY_);
-	}
-	else if (eAct == MM::AfterSet)
-	{
-		long serial;
-		pProp->Get(serial);
-		serialY_ = (int)serial;
-
-		if(InitStage(&handleY_, serial) != DEVICE_OK)
-			return XYERR_INIT_Y;
-	}
-	return DEVICE_OK;
+	return OnSerialGeneric(pProp, eAct, *GetCoreCallback(), *this, handleY_, serialY_, false, 1); // And Y is (usually) the second stage serial.
 }
 
 int CSIABXYStage::OnVelocityX(MM::PropertyBase *pProp, MM::ActionType eAct)
