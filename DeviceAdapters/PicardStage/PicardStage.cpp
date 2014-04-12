@@ -123,7 +123,7 @@ class CPiDetector
 		if(idx < m_iMotorCount)
 			return m_pMotorList[idx];
 
-		return -1;
+		return DEFAULT_SERIAL_UNKNOWN;
 	}
 
 	int GetTwisterSerial(int idx)
@@ -131,7 +131,7 @@ class CPiDetector
 		if(idx < m_iTwisterCount)
 			return m_pTwisterList[idx];
 
-		return -1;
+		return DEFAULT_SERIAL_UNKNOWN;
 	}
 
 	private:
@@ -230,12 +230,12 @@ inline static int OnSerialGeneric(MM::PropertyBase* pProp, MM::ActionType eAct, 
 	{
 	case MM::BeforeGet:
 		{
-			if(serial < 0)
+			if(serial == DEFAULT_SERIAL_UNKNOWN)
 			{
 				if(twister)
-					serial = CPiDetector::GetInstance(core, self)->GetMotorSerial(serialidx);
-				else
 					serial = CPiDetector::GetInstance(core, self)->GetTwisterSerial(serialidx);
+				else
+					serial = CPiDetector::GetInstance(core, self)->GetMotorSerial(serialidx);
 
 				int error = self.Initialize();
 				if(error != DEVICE_OK)
@@ -246,16 +246,6 @@ inline static int OnSerialGeneric(MM::PropertyBase* pProp, MM::ActionType eAct, 
 		}
 	case MM::AfterSet:
 		{
-			if(handle != NULL)
-			{
-				if(twister)
-					piDisconnectTwister(handle);
-				else
-					piDisconnectMotor(handle);
-
-				handle = NULL;
-			}
-
 			long serial_temp = (long)serial;
 			pProp->Get(serial_temp);
 			serial = (int)serial_temp;
@@ -912,10 +902,15 @@ bool CSIABXYStage::UsesDelay()
 
 int CSIABXYStage::Initialize()
 {
-	InitStage(&handleX_, serialX_);
-	InitStage(&handleY_, serialY_);
+	if(serialX_ != DEFAULT_SERIAL_UNKNOWN)
+		if(InitStage(&handleX_, serialX_) != DEVICE_OK)
+			return XYERR_INIT_X;
 
-	return handleX_ ? (handleY_ ? DEVICE_OK : XYERR_INIT_Y) : XYERR_INIT_X;
+	if(serialY_ != DEFAULT_SERIAL_UNKNOWN)
+		if(InitStage(&handleY_, serialY_) != DEVICE_OK)
+			return XYERR_INIT_Y;
+
+	return DEVICE_OK;
 }
 
 int CSIABXYStage::Shutdown()
