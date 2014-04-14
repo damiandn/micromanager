@@ -5,9 +5,11 @@
 //-----------------------------------------------------------------------------
 // DESCRIPTION:   The drivers required for the Picard Industries USB stages
 //
-// AUTHOR:        Johannes Schindelin, Luke Stuyvenberg, 2011 - 2014
+// AUTHORS:       Johannes Schindelin, Luke Stuyvenberg, 2011 - 2014
 //
-// COPYRIGHT:     Johannes Schindelin, Copyright (C) 2011 - 2014
+// COPYRIGHT:     Board of Regents of the University of Wisconsin -- Madison,
+//					Copyright (C) 2011 - 2014
+//
 // LICENSE:       This file is distributed under the BSD license.
 //                License text is included with the source distribution.
 //
