@@ -61,12 +61,12 @@ const char* g_Keyword_StepSizeY = "Y-StepSize";
 
 // These constants are per the Picard Industries documentation.
 #define TWISTER_STEP_SIZE 1.8 // deg/step
-#define TWISTER_LOWER_LIMIT (-32767 * TWISTER_STEP_SIZE)
-#define TWISTER_UPPER_LIMIT (32767 * TWISTER_STEP_SIZE)
+#define TWISTER_LOWER_LIMIT -58980.6 // (-32767 * TWISTER_STEP_SIZE)
+#define TWISTER_UPPER_LIMIT 58980.6 // (32767 * TWISTER_STEP_SIZE)
 
 #define MOTOR_STEP_SIZE 1.5 // um/step
-#define MOTOR_LOWER_LIMIT (0 * MOTOR_STEP_SIZE)
-#define MOTOR_UPPER_LIMIT (8000 * MOTOR_STEP_SIZE)
+#define MOTOR_LOWER_LIMIT 0 // 0 * MOTOR_STEP_SIZE
+#define MOTOR_UPPER_LIMIT 9000 // 6000 * MOTOR_STEP_SIZE
 
 // These apply to both motors and twisters.
 #define PICARD_MIN_VELOCITY 1
