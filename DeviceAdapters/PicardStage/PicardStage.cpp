@@ -28,9 +28,6 @@
 
 #include "PicardStage.h"
 
-// We have a lot of stub implementations in here...
-#pragma warning(disable: 4100)
-
 using namespace std;
 
 // External names used used by the rest of the system
@@ -444,12 +441,12 @@ double CSIABTwister::GetStepSizeUm()
 	return stepsize;
 }
 
-int CSIABTwister::SetPositionSteps(long steps)
+int CSIABTwister::SetPositionSteps(long /*steps*/)
 {
 	return DEVICE_ERR;
 }
 
-int CSIABTwister::GetPositionSteps(long& steps)
+int CSIABTwister::GetPositionSteps(long& /*steps*/)
 {
 	return DEVICE_ERR;
 }
@@ -620,12 +617,12 @@ int CSIABStage::GetPositionUm(double& pos)
 	return DEVICE_OK;
 }
 
-int CSIABStage::SetPositionSteps(long steps)
+int CSIABStage::SetPositionSteps(long /*steps*/)
 {
 	return DEVICE_ERR;
 }
 
-int CSIABStage::GetPositionSteps(long& steps)
+int CSIABStage::GetPositionSteps(long& /*steps*/)
 {
 	return DEVICE_ERR;
 }
@@ -833,7 +830,7 @@ int CSIABXYStage::SetPositionUm(double x, double y)
 	return moveX | moveY;
 }
 
-int CSIABXYStage::SetAdapterOriginUm(double x, double y)
+int CSIABXYStage::SetAdapterOriginUm(double /*x*/, double /*y*/)
 {
 	return 0;
 }
@@ -873,12 +870,12 @@ int CSIABXYStage::GetLimitsUm(double& xMin, double& xMax, double& yMin, double& 
 	return DEVICE_OK;
 }
 
-int CSIABXYStage::SetPositionSteps(long x, long y)
+int CSIABXYStage::SetPositionSteps(long /*x*/, long /*y*/)
 {
 	return DEVICE_ERR;
 }
 
-int CSIABXYStage::GetPositionSteps(long& x, long& y)
+int CSIABXYStage::GetPositionSteps(long& /*x*/, long& /*y*/)
 {
 	return DEVICE_ERR;
 }
@@ -898,7 +895,7 @@ int CSIABXYStage::SetOrigin()
 	return DEVICE_ERR;
 }
 
-int CSIABXYStage::GetStepLimits(long& xMin, long& xMax, long& yMin, long& yMax)
+int CSIABXYStage::GetStepLimits(long& /*xMin*/, long& /*xMax*/, long& /*yMin*/, long& /*yMax*/)
 {
 	return DEVICE_ERR;
 }
