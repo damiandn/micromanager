@@ -38,31 +38,21 @@ public:
 	~CSIABTwister();
 
 	bool Busy();
-	double GetDelayMs() const;
-	void SetDelayMs(double delay);
-	bool UsesDelay();
 	int Initialize();
 	int Shutdown();
 	void GetName(char* name) const;
 
 	int SetPositionUm(double pos);
-	int Move(double velocity);
-	int SetAdapterOriginUm(double d);
 	int GetPositionUm(double& pos);
 	int SetPositionSteps(long steps);
 	int GetPositionSteps(long& steps);
 	int SetOrigin();
 	int GetLimits(double& lower, double& upper);
 	int IsStageSequenceable(bool& isSequenceable) const;
-	int GetStageSequenceMaxLength(long& nrEvents) const;
-	int StartStageSequence() const;
-	int StopStageSequence() const;
-	int ClearStageSequence();
-	int AddToStageSequence(double position);
-	int SendStageSequence() const; 
 	bool IsContinuousFocusDrive() const;
 
 	double GetStepSizeUm();
+
 private:
 	int OnSerialNumber(MM::PropertyBase* pProp, MM::ActionType eAct);
 	int OnVelocity(MM::PropertyBase* pProp, MM::ActionType eAct);
@@ -83,32 +73,21 @@ public:
 	~CSIABStage();
 
 	bool Busy();
-	double GetDelayMs() const;
-	void SetDelayMs(double delay);
-	bool UsesDelay();
 	int Initialize();
 	int Shutdown();
 	void GetName(char* name) const;
 
 	int SetPositionUm(double pos);
-	int SetRelativePositionUm(double d);
-	int Move(double velocity);
-	int SetAdapterOriginUm(double d);
 	int GetPositionUm(double& pos);
 	int SetPositionSteps(long steps);
 	int GetPositionSteps(long& steps);
 	int SetOrigin();
 	int GetLimits(double& lower, double& upper);
 	int IsStageSequenceable(bool& isSequenceable) const;
-	int GetStageSequenceMaxLength(long& nrEvents) const;
-	int StartStageSequence() const;
-	int StopStageSequence() const;
-	int ClearStageSequence();
-	int AddToStageSequence(double position);
-	int SendStageSequence() const; 
 	bool IsContinuousFocusDrive() const;
 
 	double GetStepSizeUm();
+
 private:
 	int OnSerialNumber(MM::PropertyBase* pProp, MM::ActionType eAct);
 	int OnVelocity(MM::PropertyBase* pProp, MM::ActionType eAct);
@@ -129,23 +108,16 @@ public:
 	~CSIABXYStage();
 
 	bool Busy();
-	double GetDelayMs() const;
-	void SetDelayMs(double delay);
-	bool UsesDelay();
 	int Initialize();
 	int Shutdown();
 	void GetName(char* name) const;
 
 	int SetPositionUm(double x, double y);
-	int SetRelativePositionUm(double dx, double dy);
 	int SetAdapterOriginUm(double x, double y);
 	int GetPositionUm(double& x, double& y);
 	int GetLimitsUm(double& xMin, double& xMax, double& yMin, double& yMax);
-	int Move(double vx, double vy);
-
 	int SetPositionSteps(long x, long y);
 	int GetPositionSteps(long& x, long& y);
-	int SetRelativePositionSteps(long x, long y);
 	int Home();
 	int Stop();
 	int SetOrigin();//jizhen, 4/12/2007

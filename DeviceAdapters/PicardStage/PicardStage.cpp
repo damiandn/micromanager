@@ -354,20 +354,6 @@ bool CSIABTwister::Busy()
 	return false;
 }
 
-double CSIABTwister::GetDelayMs() const
-{
-	return 0;
-}
-
-void CSIABTwister::SetDelayMs(double delay)
-{
-}
-
-bool CSIABTwister::UsesDelay()
-{
-	return false;
-}
-
 int CSIABTwister::Initialize()
 {
 	int error = -1;
@@ -433,17 +419,6 @@ int CSIABTwister::SetPositionUm(double pos)
 	return moveret;
 }
 
-int CSIABTwister::Move(double velocity)
-{
-	velocity_ = (int)velocity;
-	return DEVICE_ERR;
-}
-
-int CSIABTwister::SetAdapterOriginUm(double d)
-{
-	return DEVICE_ERR;
-}
-
 int CSIABTwister::GetPositionUm(double& pos)
 {
 	if(handle_ == NULL)
@@ -503,37 +478,6 @@ int CSIABTwister::IsStageSequenceable(bool& isSequenceable) const
 	return DEVICE_OK;
 }
 
-int CSIABTwister::GetStageSequenceMaxLength(long& nrEvents) const
-{
-	nrEvents = 0;
-	return DEVICE_OK;
-}
-
-int CSIABTwister::StartStageSequence() const
-{
-	return DEVICE_OK;
-}
-
-int CSIABTwister::StopStageSequence() const
-{
-	return DEVICE_OK;
-}
-
-int CSIABTwister::ClearStageSequence()
-{
-	return DEVICE_OK;
-}
-
-int CSIABTwister::AddToStageSequence(double position)
-{
-	return DEVICE_OK;
-}
-
-int CSIABTwister::SendStageSequence() const
-{
-	return DEVICE_OK;
-}
-
 bool CSIABTwister::IsContinuousFocusDrive() const
 {
 	return false;
@@ -582,20 +526,6 @@ bool CSIABStage::Busy()
 	BOOL moving;
 	if (handle_ && !piGetMotorMovingStatus(&moving, handle_))
 		return moving != 0;
-	return false;
-}
-
-double CSIABStage::GetDelayMs() const
-{
-	return 0;
-}
-
-void CSIABStage::SetDelayMs(double delay)
-{
-}
-
-bool CSIABStage::UsesDelay()
-{
 	return false;
 }
 
@@ -678,27 +608,6 @@ int CSIABStage::SetPositionUm(double pos)
 	return moveret;
 }
 
-int CSIABStage::SetRelativePositionUm(double d)
-{
-	double position;
-	int err = GetPositionUm(position);
-	if(err != DEVICE_OK)
-		return err;
-
-	return SetPositionUm(position + d);
-}
-
-int CSIABStage::Move(double velocity)
-{
-	velocity_ = (int)velocity;
-	return DEVICE_ERR;
-}
-
-int CSIABStage::SetAdapterOriginUm(double d)
-{
-	return DEVICE_ERR;
-}
-
 int CSIABStage::GetPositionUm(double& pos)
 {
 	if(handle_ == NULL)
@@ -742,37 +651,6 @@ int CSIABStage::GetLimits(double& lower, double& upper)
 int CSIABStage::IsStageSequenceable(bool& isSequenceable) const
 {
 	return false;
-}
-
-int CSIABStage::GetStageSequenceMaxLength(long& nrEvents) const
-{
-	nrEvents = 0;
-	return DEVICE_OK;
-}
-
-int CSIABStage::StartStageSequence() const
-{
-	return DEVICE_OK;
-}
-
-int CSIABStage::StopStageSequence() const
-{
-	return DEVICE_OK;
-}
-
-int CSIABStage::ClearStageSequence()
-{
-	return DEVICE_OK;
-}
-
-int CSIABStage::AddToStageSequence(double position)
-{
-	return DEVICE_OK;
-}
-
-int CSIABStage::SendStageSequence() const
-{
-	return DEVICE_OK;
 }
 
 bool CSIABStage::IsContinuousFocusDrive() const
@@ -888,20 +766,6 @@ bool CSIABXYStage::Busy()
 	return movingX != FALSE || movingY != FALSE;
 }
 
-double CSIABXYStage::GetDelayMs() const
-{
-	return 0;
-}
-
-void CSIABXYStage::SetDelayMs(double delay)
-{
-}
-
-bool CSIABXYStage::UsesDelay()
-{
-	return false;
-}
-
 int CSIABXYStage::Initialize()
 {
 	if(serialX_ != DEFAULT_SERIAL_UNKNOWN)
@@ -969,16 +833,6 @@ int CSIABXYStage::SetPositionUm(double x, double y)
 	return moveX | moveY;
 }
 
-int CSIABXYStage::SetRelativePositionUm(double dx, double dy)
-{
-	double positionX, positionY;
-	int err = GetPositionUm(positionX, positionY);
-	if(err != DEVICE_OK)
-		return err;
-
-	return SetPositionUm(positionX + dx, positionY + dy);
-}
-
 int CSIABXYStage::SetAdapterOriginUm(double x, double y)
 {
 	return 0;
@@ -1019,24 +873,12 @@ int CSIABXYStage::GetLimitsUm(double& xMin, double& xMax, double& yMin, double& 
 	return DEVICE_OK;
 }
 
-int CSIABXYStage::Move(double vx, double vy)
-{
-	velocityX_ = (int)vx;
-	velocityY_ = (int)vy;
-	return 0;
-}
-
 int CSIABXYStage::SetPositionSteps(long x, long y)
 {
 	return DEVICE_ERR;
 }
 
 int CSIABXYStage::GetPositionSteps(long& x, long& y)
-{
-	return DEVICE_ERR;
-}
-
-int CSIABXYStage::SetRelativePositionSteps(long x, long y)
 {
 	return DEVICE_ERR;
 }
