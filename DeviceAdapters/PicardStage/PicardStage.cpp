@@ -226,7 +226,7 @@ inline static int OnVelocityGeneric(MM::PropertyBase* pProp, MM::ActionType eAct
 }
 
 // Similar to the above routine, this one handles the OnSerialNumber PropertyAction.
-inline static int OnSerialGeneric(MM::PropertyBase* pProp, MM::ActionType eAct, MM::Core& core, MM::Device& self, void*& handle, int& serial, bool twister, int serialidx)
+inline static int OnSerialGeneric(MM::PropertyBase* pProp, MM::ActionType eAct, MM::Core& core, MM::Device& self, int& serial, bool twister, int serialidx)
 {
 	switch(eAct)
 	{
@@ -335,7 +335,7 @@ CSIABTwister::~CSIABTwister()
 int CSIABTwister::OnSerialNumber(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
 	// Usually only 1 twister, so expect index 0.
-	return OnSerialGeneric(pProp, eAct, *GetCoreCallback(), *this, handle_, serial_, true, 0);
+	return OnSerialGeneric(pProp, eAct, *GetCoreCallback(), *this, serial_, true, 0);
 }
 
 int CSIABTwister::OnVelocity(MM::PropertyBase* pProp, MM::ActionType eAct)
@@ -566,7 +566,7 @@ CSIABStage::~CSIABStage()
 int CSIABStage::OnSerialNumber(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
 	// Index derived via magic. (The Z stage is presumed to be the 3rd index in numerical order.)
-	return OnSerialGeneric(pProp, eAct, *GetCoreCallback(), *this, handle_, serial_, false, 2);
+	return OnSerialGeneric(pProp, eAct, *GetCoreCallback(), *this, serial_, false, 2);
 }
 
 int CSIABStage::OnVelocity(MM::PropertyBase* pProp, MM::ActionType eAct)
@@ -860,12 +860,12 @@ void CSIABXYStage::ShutdownStage(void** handleptr)
 
 int CSIABXYStage::OnSerialNumberX(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
-	return OnSerialGeneric(pProp, eAct, *GetCoreCallback(), *this, handleX_, serialX_, false, 0); // X is (usually) the first stage serial.
+	return OnSerialGeneric(pProp, eAct, *GetCoreCallback(), *this, serialX_, false, 0); // X is (usually) the first stage serial.
 }
 
 int CSIABXYStage::OnSerialNumberY(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
-	return OnSerialGeneric(pProp, eAct, *GetCoreCallback(), *this, handleY_, serialY_, false, 1); // And Y is (usually) the second stage serial.
+	return OnSerialGeneric(pProp, eAct, *GetCoreCallback(), *this, serialY_, false, 1); // And Y is (usually) the second stage serial.
 }
 
 int CSIABXYStage::OnVelocityX(MM::PropertyBase *pProp, MM::ActionType eAct)
