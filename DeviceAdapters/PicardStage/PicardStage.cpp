@@ -200,7 +200,7 @@ inline static int OnVelocityGeneric(MM::PropertyBase* pProp, MM::ActionType eAct
 	case MM::BeforeGet:
 		{
 			if(pGet != NULL && (*pGet)(&velocity, handle) != PI_NO_ERROR)
-				return DEVICE_ERR;
+				return DEVICE_NOT_CONNECTED;
 
 			pProp->Set((long)velocity);
 
@@ -213,7 +213,7 @@ inline static int OnVelocityGeneric(MM::PropertyBase* pProp, MM::ActionType eAct
 			velocity = (int)vel_temp;
 
 			if(pSet != NULL && (*pSet)(velocity, handle) != PI_NO_ERROR)
-				return DEVICE_ERR;
+				return DEVICE_NOT_CONNECTED;
 
 			break;
 		}
@@ -254,6 +254,22 @@ inline static int OnSerialGeneric(MM::PropertyBase* pProp, MM::ActionType eAct, 
 	}
 
 	return DEVICE_OK;
+}
+
+// PiUsb generates a specific set of error messages. This routine maps them onto base MM device errors (see MMDeviceConstants.h).
+inline static int InterpretPiUsbError(int pi_error)
+{
+	switch(pi_error)
+	{
+	case PI_NO_ERROR:
+		return DEVICE_OK;
+	case PI_DEVICE_NOT_FOUND:
+		return DEVICE_NOT_CONNECTED;
+	case PI_OBJECT_NOT_FOUND:
+	case PI_CANNOT_CREATE_OBJECT:
+	default:
+		return DEVICE_ERR;
+	};
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -297,7 +313,7 @@ MODULE_API MM::Device* CreateDevice(const char* deviceName)
 	}
 
 	// ...supplied name not recognized
-	return 0;
+	return NULL;
 }
 
 MODULE_API void DeleteDevice(MM::Device* pDevice)
@@ -346,31 +362,36 @@ bool CSIABTwister::Busy()
 		return false;
 
 	BOOL moving;
-	if (handle_ && !piGetTwisterMovingStatus(&moving, handle_))
+	if (piGetTwisterMovingStatus(&moving, handle_) == PI_NO_ERROR)
 		return moving != 0;
+
 	return false;
 }
 
 int CSIABTwister::Initialize()
 {
-	int error = -1;
-	handle_ = piConnectTwister(&error, serial_);
+	if(handle_ != NULL)
+		Shutdown();
 
-	if (handle_)
-		piGetTwisterVelocity(&velocity_, handle_);
+	int pi_error = PI_NO_ERROR;
+	handle_ = piConnectTwister(&pi_error, serial_);
+
+	if (handle_ != NULL && pi_error == PI_NO_ERROR)
+		pi_error = piGetTwisterVelocity(&velocity_, handle_);
 	else
-		LogMessage(VarFormat("Could not initialize twister %d (error code %d)", serial_, error), false);
+		LogMessage(VarFormat("Could not initialize twister %d (PiUsb error code %d)", serial_, pi_error), false);
 
-	return handle_ ? 0 : 1;
+	return InterpretPiUsbError(pi_error);
 }
 
 int CSIABTwister::Shutdown()
 {
-	if (handle_) {
+	if (handle_ != NULL) {
 		piDisconnectTwister(handle_);
 		handle_ = NULL;
 	}
-	return 0;
+
+	return DEVICE_OK;
 }
 
 void CSIABTwister::GetName(char* name) const
@@ -381,7 +402,7 @@ void CSIABTwister::GetName(char* name) const
 int CSIABTwister::SetPositionUm(double pos)
 {
 	if(handle_ == NULL)
-		return DEVICE_ERR;
+		return DEVICE_NOT_CONNECTED;
 
 	double min = MOTOR_LOWER_LIMIT, max = MOTOR_UPPER_LIMIT;
 	int error = DEVICE_OK;
@@ -393,11 +414,14 @@ int CSIABTwister::SetPositionUm(double pos)
 
 	int to = (int)(pos / GetStepSizeUm());
 
-	int moveret = piRunTwisterToPosition(to, velocity_, handle_);
+	int pi_error = piRunTwisterToPosition(to, velocity_, handle_); // Be sure not to confuse errors...
+
+	if(pi_error != PI_NO_ERROR)
+		return InterpretPiUsbError(pi_error);
 
 	int at = 0;
-	if(piGetTwisterPosition(&at, handle_) != PI_NO_ERROR)
-		return DEVICE_ERR;
+	if((pi_error = piGetTwisterPosition(&at, handle_)) != PI_NO_ERROR)
+		return InterpretPiUsbError(pi_error);;
 
 	if(at != (int)pos) {
 		clock_t start = clock();
@@ -405,36 +429,35 @@ int CSIABTwister::SetPositionUm(double pos)
 		while(!Busy() && at != (int)pos && CLOCKDIFF(last = clock(), start) < MAX_WAIT) {
 			CDeviceUtils::SleepMs(0);
 
-			if(piGetTwisterPosition(&at, handle_) != PI_NO_ERROR)
-				return DEVICE_ERR;
+			if((pi_error = piGetTwisterPosition(&at, handle_)) != PI_NO_ERROR)
+				return InterpretPiUsbError(pi_error);
 		};
 
 		if(CLOCKDIFF(last, start) >= MAX_WAIT)
 			LogMessage(VarFormat("Long wait (twister): %d / %d (%d != %d).", last - start, (int)(MAX_WAIT*CLOCKS_PER_SEC), at, (int)pos), true);
 	};
 
-	return moveret;
+	return InterpretPiUsbError(pi_error);
 }
 
 int CSIABTwister::GetPositionUm(double& pos)
 {
 	if(handle_ == NULL)
-		return DEVICE_ERR;
+		return DEVICE_NOT_CONNECTED;
 
-	int position;
-	if (piGetTwisterPosition(&position, handle_))
-		return DEVICE_ERR;
-	pos = position;
-	return DEVICE_OK;
+	int position, pi_error;
+	if ((pi_error = piGetTwisterPosition(&position, handle_)) == PI_NO_ERROR)
+		pos = position * GetStepSizeUm();
+
+	return InterpretPiUsbError(pi_error);
 }
 
 double CSIABTwister::GetStepSizeUm()
 {
-	int error = DEVICE_OK;
 	double stepsize = TWISTER_STEP_SIZE;
 
-	if((error = GetProperty(g_Keyword_StepSize, stepsize)) != DEVICE_OK)
-		return error;
+	if(GetProperty(g_Keyword_StepSize, stepsize) != DEVICE_OK)
+		return TWISTER_STEP_SIZE;
 
 	// This is technically wrong, since the step size is not in um, but in degrees.
 	// MM does not have a concept of a rotational stage, however, so 'overload' this.
@@ -443,17 +466,17 @@ double CSIABTwister::GetStepSizeUm()
 
 int CSIABTwister::SetPositionSteps(long /*steps*/)
 {
-	return DEVICE_ERR;
+	return DEVICE_NOT_YET_IMPLEMENTED;
 }
 
 int CSIABTwister::GetPositionSteps(long& /*steps*/)
 {
-	return DEVICE_ERR;
+	return DEVICE_NOT_YET_IMPLEMENTED;
 }
 
 int CSIABTwister::SetOrigin()
 {
-	return DEVICE_ERR;
+	return DEVICE_NOT_YET_IMPLEMENTED;
 }
 
 int CSIABTwister::GetLimits(double& lower, double& upper)
@@ -521,33 +544,36 @@ bool CSIABStage::Busy()
 		return false;
 
 	BOOL moving;
-	if (handle_ && !piGetMotorMovingStatus(&moving, handle_))
+	if (piGetMotorMovingStatus(&moving, handle_) == PI_NO_ERROR)
 		return moving != 0;
+
 	return false;
 }
 
 int CSIABStage::Initialize()
 {
-	if(handle_)
+	if(handle_ != NULL)
 		Shutdown();
 
-	int error = -1;
-	handle_ = piConnectMotor(&error, serial_);
-	if (handle_)
-		piGetMotorVelocity(&velocity_, handle_);
-	else
-		LogMessage(VarFormat("Could not initialize motor %i (error code %i)", serial_, error));
+	int pi_error = PI_NO_ERROR;
+	handle_ = piConnectMotor(&pi_error, serial_);
 
-	return handle_ ? 0 : 1;
+	if (handle_ != NULL && pi_error == PI_NO_ERROR)
+		pi_error = piGetMotorVelocity(&velocity_, handle_);
+	else
+		LogMessage(VarFormat("Could not initialize motor %i (PiUsb error code %i)", serial_, pi_error));
+
+	return InterpretPiUsbError(pi_error);
 }
 
 int CSIABStage::Shutdown()
 {
-	if (handle_) {
+	if (handle_ != NULL) {
 		piDisconnectMotor(handle_);
 		handle_ = NULL;
 	}
-	return 0;
+
+	return DEVICE_OK;
 }
 
 void CSIABStage::GetName(char* name) const
@@ -557,10 +583,10 @@ void CSIABStage::GetName(char* name) const
 
 double CSIABStage::GetStepSizeUm()
 {
-	double out = 0;
+	double out = MOTOR_STEP_SIZE;
 
 	if(GetProperty(g_Keyword_StepSize, out) != DEVICE_OK)
-		return 0;
+		return MOTOR_STEP_SIZE;
 
 	return out;
 }
@@ -568,7 +594,7 @@ double CSIABStage::GetStepSizeUm()
 int CSIABStage::SetPositionUm(double pos)
 {
 	if(handle_ == NULL)
-		return DEVICE_ERR;
+		return DEVICE_NOT_CONNECTED;
 
 	double min = MOTOR_LOWER_LIMIT, max = MOTOR_UPPER_LIMIT;
 	int error = DEVICE_OK;
@@ -580,11 +606,14 @@ int CSIABStage::SetPositionUm(double pos)
 
 	int to = (int)(pos / GetStepSizeUm());
 
-	int moveret = piRunMotorToPosition(to, velocity_, handle_);
+	int pi_error = piRunMotorToPosition(to, velocity_, handle_);
+
+	if(pi_error != PI_NO_ERROR)
+		return InterpretPiUsbError(pi_error);
 
 	int at = 0;
-	if(piGetMotorPosition(&at, handle_) != PI_NO_ERROR)
-		return DEVICE_ERR;
+	if((pi_error = piGetMotorPosition(&at, handle_)) != PI_NO_ERROR)
+		return InterpretPiUsbError(pi_error);
 
 	// WORKAROUND: piRunMotorToPosition doesn't wait for the motor to get
 	// underway. Wait a bit here.
@@ -594,42 +623,42 @@ int CSIABStage::SetPositionUm(double pos)
 		while(!Busy() && at != to && CLOCKDIFF(last = clock(), start) < MAX_WAIT) {
 			CDeviceUtils::SleepMs(0);
 
-			if(piGetMotorPosition(&at, handle_) != PI_NO_ERROR)
-				return DEVICE_ERR;
+			if((pi_error = piGetMotorPosition(&at, handle_)) != PI_NO_ERROR)
+				return InterpretPiUsbError(pi_error);
 		};
 
 		if(CLOCKDIFF(last, start) >= MAX_WAIT)
 			LogMessage(VarFormat("Long wait (Z stage): %d / %d (%d != %d).", last - start, (int)(MAX_WAIT*CLOCKS_PER_SEC), at, to), true);
 	};
 
-	return moveret;
+	return InterpretPiUsbError(pi_error);
 }
 
 int CSIABStage::GetPositionUm(double& pos)
 {
 	if(handle_ == NULL)
-		return DEVICE_ERR;
+		return DEVICE_NOT_CONNECTED;
 
-	int position;
-	if (piGetMotorPosition(&position, handle_))
-		return DEVICE_ERR;
-	pos = position * GetStepSizeUm();
-	return DEVICE_OK;
+	int position, pi_error;
+	if ((pi_error = piGetMotorPosition(&position, handle_)) == PI_NO_ERROR)
+		pos = position * GetStepSizeUm();
+
+	return InterpretPiUsbError(pi_error);
 }
 
 int CSIABStage::SetPositionSteps(long /*steps*/)
 {
-	return DEVICE_ERR;
+	return DEVICE_NOT_YET_IMPLEMENTED;
 }
 
 int CSIABStage::GetPositionSteps(long& /*steps*/)
 {
-	return DEVICE_ERR;
+	return DEVICE_NOT_YET_IMPLEMENTED;
 }
 
 int CSIABStage::SetOrigin()
 {
-	return DEVICE_ERR;
+	return DEVICE_UNSUPPORTED_COMMAND;
 }
 
 int CSIABStage::GetLimits(double& lower, double& upper)
@@ -647,7 +676,8 @@ int CSIABStage::GetLimits(double& lower, double& upper)
 
 int CSIABStage::IsStageSequenceable(bool& isSequenceable) const
 {
-	return false;
+	isSequenceable = false;
+	return DEVICE_OK;
 }
 
 bool CSIABStage::IsContinuousFocusDrive() const
@@ -706,23 +736,21 @@ int CSIABXYStage::InitStage(void** handleptr, int newserial)
 		serialY_ = newserial;
 		velptr = &velocityY_;
 	} else {
-		return DEVICE_ERR;
+		return DEVICE_INTERNAL_INCONSISTENCY;
 	};
 
 	if(*handleptr != NULL)
 		ShutdownStage(handleptr);
 
-	int error = -1;
-	*handleptr = piConnectMotor(&error, newserial); // assignment intentional
+	int pi_error = PI_NO_ERROR;
+	*handleptr = piConnectMotor(&pi_error, newserial); // assignment intentional
 
-	if(*handleptr != NULL) {
-		piGetMotorVelocity(velptr, *handleptr);
-	} else {
-		LogMessage(VarFormat("Could not initialize motor %d (error code %d)\n", newserial, error));
-		return DEVICE_ERR;
-	}
+	if(*handleptr != NULL && pi_error == PI_NO_ERROR)
+		pi_error = piGetMotorVelocity(velptr, *handleptr);
+	else
+		LogMessage(VarFormat("Could not initialize motor %d (PiUsb error code %d)\n", newserial, pi_error));
 
-	return DEVICE_OK;
+	return InterpretPiUsbError(pi_error);
 }
 
 void CSIABXYStage::ShutdownStage(void** handleptr)
@@ -755,23 +783,33 @@ int CSIABXYStage::OnVelocityY(MM::PropertyBase *pProp, MM::ActionType eAct)
 
 bool CSIABXYStage::Busy()
 {
+	if(handleX_ == NULL || handleY_ == NULL)
+		return false;
+
 	BOOL movingX = FALSE, movingY = FALSE;
+
 	if (handleX_)
-		piGetMotorMovingStatus(&movingX, handleX_);
+		if(piGetMotorMovingStatus(&movingX, handleX_) != PI_NO_ERROR)
+			return false;
+
 	if (handleY_)
-		piGetMotorMovingStatus(&movingY, handleY_);
+		if(piGetMotorMovingStatus(&movingY, handleY_) != PI_NO_ERROR)
+			return false;
+
 	return movingX != FALSE || movingY != FALSE;
 }
 
 int CSIABXYStage::Initialize()
 {
+	int error = 0;
+
 	if(serialX_ != DEFAULT_SERIAL_UNKNOWN)
-		if(InitStage(&handleX_, serialX_) != DEVICE_OK)
-			return XYERR_INIT_X;
+		if((error = InitStage(&handleX_, serialX_)) != DEVICE_OK)
+			return error;
 
 	if(serialY_ != DEFAULT_SERIAL_UNKNOWN)
-		if(InitStage(&handleY_, serialY_) != DEVICE_OK)
-			return XYERR_INIT_Y;
+		if((error = InitStage(&handleY_, serialY_)) != DEVICE_OK)
+			return error;
 
 	return DEVICE_OK;
 }
@@ -791,7 +829,7 @@ void CSIABXYStage::GetName(char* name) const
 int CSIABXYStage::SetPositionUm(double x, double y)
 {
 	if(handleX_ == NULL || handleY_ == NULL)
-		return DEVICE_ERR;
+		return DEVICE_NOT_CONNECTED;
 
 	double minX = MOTOR_LOWER_LIMIT, maxX = MOTOR_UPPER_LIMIT, minY = MOTOR_LOWER_LIMIT, maxY = MOTOR_UPPER_LIMIT;
 	int error = DEVICE_OK;
@@ -805,13 +843,16 @@ int CSIABXYStage::SetPositionUm(double x, double y)
 	int toX = (int)(x / GetStepSizeXUm());
 	int toY = (int)(y / GetStepSizeYUm());
 
-	int moveX = piRunMotorToPosition(toX, velocityX_, handleX_);
-	int moveY = piRunMotorToPosition(toY, velocityY_, handleY_) << 1;
+	int pi_error_x = piRunMotorToPosition(toX, velocityX_, handleX_);
+	int pi_error_y = piRunMotorToPosition(toY, velocityY_, handleY_) << 1;
 
 	int atX, atY;
 
-	if(piGetMotorPosition(&atX, handleX_) != PI_NO_ERROR || piGetMotorPosition(&atY, handleY_) != PI_NO_ERROR)
-		return DEVICE_ERR;
+	if((pi_error_x = piGetMotorPosition(&atX, handleX_)) != PI_NO_ERROR)
+		return InterpretPiUsbError(pi_error_x);
+	
+	if((pi_error_y = piGetMotorPosition(&atY, handleY_)) != PI_NO_ERROR)
+		return InterpretPiUsbError(pi_error_y);
 
 	if(atX != toX || atY != toY) {
 		clock_t start = clock();
@@ -819,20 +860,23 @@ int CSIABXYStage::SetPositionUm(double x, double y)
 		while(!Busy() && (atX != toX || atY != toY) && CLOCKDIFF(last = clock(), start) < MAX_WAIT) {
 			CDeviceUtils::SleepMs(0);
 
-			if(piGetMotorPosition(&atX, handleX_) != PI_NO_ERROR || piGetMotorPosition(&atY, handleY_) != PI_NO_ERROR)
-				return DEVICE_ERR;
+			if((pi_error_x = piGetMotorPosition(&atX, handleX_)) != PI_NO_ERROR)
+				return InterpretPiUsbError(pi_error_x);
+			
+			if((pi_error_y = piGetMotorPosition(&atY, handleY_)) != PI_NO_ERROR)
+				return InterpretPiUsbError(pi_error_y);
 		};
 
 		if(CLOCKDIFF(last, start) >= MAX_WAIT)
 			LogMessage(VarFormat("Long wait (XY): %d / %d (%d != %d || %d != %d).", last - start, (int)(MAX_WAIT*CLOCKS_PER_SEC), atX, toX, atY, toY), true);
 	};
 
-	return moveX | moveY;
+	return InterpretPiUsbError(pi_error_x != PI_NO_ERROR ? pi_error_x : pi_error_y);
 }
 
 int CSIABXYStage::SetAdapterOriginUm(double /*x*/, double /*y*/)
 {
-	return 0;
+	return DEVICE_NOT_YET_IMPLEMENTED;
 }
 
 int CSIABXYStage::GetPositionUm(double& x, double& y)
@@ -872,47 +916,51 @@ int CSIABXYStage::GetLimitsUm(double& xMin, double& xMax, double& yMin, double& 
 
 int CSIABXYStage::SetPositionSteps(long /*x*/, long /*y*/)
 {
-	return DEVICE_ERR;
+	return DEVICE_NOT_YET_IMPLEMENTED;
 }
 
 int CSIABXYStage::GetPositionSteps(long& /*x*/, long& /*y*/)
 {
-	return DEVICE_ERR;
+	return DEVICE_NOT_YET_IMPLEMENTED;
 }
 
 int CSIABXYStage::Home()
 {
-	return DEVICE_ERR;
+	return DEVICE_NOT_YET_IMPLEMENTED;
 }
 
 int CSIABXYStage::Stop()
 {
-	return DEVICE_ERR;
+	return DEVICE_NOT_YET_IMPLEMENTED;
 }
 
 int CSIABXYStage::SetOrigin()
 {
-	return DEVICE_ERR;
+	return DEVICE_UNSUPPORTED_COMMAND;
 }
 
 int CSIABXYStage::GetStepLimits(long& /*xMin*/, long& /*xMax*/, long& /*yMin*/, long& /*yMax*/)
 {
-	return DEVICE_ERR;
+	return DEVICE_NOT_YET_IMPLEMENTED;
 }
 
 double CSIABXYStage::GetStepSizeXUm()
 {
-	double out = 0;
+	double out = MOTOR_STEP_SIZE;
+
 	if(GetProperty(g_Keyword_StepSizeX, out) != DEVICE_OK)
-		return 0;
+		return MOTOR_STEP_SIZE;
+
 	return out;
 }
 
 double CSIABXYStage::GetStepSizeYUm()
 {
-	double out = 0;
+	double out = MOTOR_STEP_SIZE;
+
 	if(GetProperty(g_Keyword_StepSizeY, out) != DEVICE_OK)
-		return 0;
+		return MOTOR_STEP_SIZE;
+
 	return out;
 }
 

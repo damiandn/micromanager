@@ -115,16 +115,17 @@ public:
 	int SetPositionUm(double x, double y);
 	int SetAdapterOriginUm(double x, double y);
 	int GetPositionUm(double& x, double& y);
-	int GetLimitsUm(double& xMin, double& xMax, double& yMin, double& yMax);
 	int SetPositionSteps(long x, long y);
 	int GetPositionSteps(long& x, long& y);
 	int Home();
 	int Stop();
-	int SetOrigin();//jizhen, 4/12/2007
+	int SetOrigin();
+	int GetLimitsUm(double& xMin, double& xMax, double& yMin, double& yMax);
 	int GetStepLimits(long& xMin, long& xMax, long& yMin, long& yMax);
+	int IsXYStageSequenceable(bool& isSequenceable) const;
+
 	double GetStepSizeXUm();
 	double GetStepSizeYUm();
-	int IsXYStageSequenceable(bool& isSequenceable) const;
 
 protected:
 	int InitStage(void** handleptr, int serial);
