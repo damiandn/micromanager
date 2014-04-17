@@ -357,7 +357,8 @@ int CSIABTwister::OnSerialNumber(MM::PropertyBase* pProp, MM::ActionType eAct)
 
 int CSIABTwister::OnVelocity(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
-	return OnVelocityGeneric(pProp, eAct, handle_, velocity_, &piGetTwisterVelocity, NULL);
+	// Although there *is* a piGetTwisterVelocity, the absence of a piSetTwisterVelocity tends to override the property change.
+	return OnVelocityGeneric(pProp, eAct, handle_, velocity_, NULL, NULL);
 }
 
 bool CSIABTwister::Busy()
