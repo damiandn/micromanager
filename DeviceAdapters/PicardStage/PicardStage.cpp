@@ -197,7 +197,7 @@ inline static void GenerateAllowedVelocities(vector<string>& vels)
 inline static int OnVelocityGeneric(MM::PropertyBase* pProp, MM::ActionType eAct, void* handle, int& velocity, int (__stdcall* pGet)(int*, void*), int (__stdcall* pSet)(int, void*))
 {
 	if(handle == NULL)
-		return eAct == MM::BeforeGet ? DEVICE_OK : DEVICE_ERR;
+		return eAct == MM::BeforeGet ? DEVICE_OK : DEVICE_NOT_CONNECTED;
 
 	switch(eAct)
 	{
