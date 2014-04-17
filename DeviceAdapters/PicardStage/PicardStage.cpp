@@ -60,12 +60,16 @@ const char* g_Keyword_StepSizeY = "Y-StepSize";
 
 // These constants are per the Picard Industries documentation.
 #define TWISTER_STEP_SIZE 1.8 // deg/step
-#define TWISTER_LOWER_LIMIT -58980.6 // (-32767 * TWISTER_STEP_SIZE)
-#define TWISTER_UPPER_LIMIT 58980.6 // (32767 * TWISTER_STEP_SIZE)
+#define TWISTER_LOWER_LIMIT_STEPS -32767
+#define TWISTER_UPPER_LIMIT_STEPS 32767
+#define TWISTER_LOWER_LIMIT -58980.6 // TWISTER_LOWER_LIMIT_STEPS * TWISTER_STEP_SIZE
+#define TWISTER_UPPER_LIMIT 58980.6 // TWISTER_UPPER_LIMIT_STEPS * TWISTER_STEP_SIZE
 
 #define MOTOR_STEP_SIZE 1.5 // um/step
-#define MOTOR_LOWER_LIMIT 0 // 0 * MOTOR_STEP_SIZE
-#define MOTOR_UPPER_LIMIT 9000 // 6000 * MOTOR_STEP_SIZE
+#define MOTOR_LOWER_LIMIT_STEPS 0
+#define MOTOR_UPPER_LIMIT_STEPS 5800 // Officially, the limit is 5800; leave a physical margin.
+#define MOTOR_LOWER_LIMIT 0 // MOTOR_LOWER_LIMIT_STEPS * MOTOR_STEP_SIZE
+#define MOTOR_UPPER_LIMIT 8700 // MOTOR_UPPER_LIMIT_STEPS * MOTOR_STEP_SIZE
 
 // These apply to both motors and twisters.
 #define PICARD_MIN_VELOCITY 1
@@ -401,55 +405,17 @@ void CSIABTwister::GetName(char* name) const
 
 int CSIABTwister::SetPositionUm(double pos)
 {
-	if(handle_ == NULL)
-		return DEVICE_NOT_CONNECTED;
-
-	double min = MOTOR_LOWER_LIMIT, max = MOTOR_UPPER_LIMIT;
-	int error = DEVICE_OK;
-
-	if((error = GetLimits(min, max)) != DEVICE_OK)
-		return error;
-
-	pos = pos < min ? min : (pos > max ? max : pos); // Clamp to min..max
-
-	int to = static_cast<int>(pos / GetStepSizeUm());
-
-	int pi_error = piRunTwisterToPosition(to, velocity_, handle_); // Be sure not to confuse errors...
-
-	if(pi_error != PI_NO_ERROR)
-		return InterpretPiUsbError(pi_error);
-
-	int at = 0;
-	if((pi_error = piGetTwisterPosition(&at, handle_)) != PI_NO_ERROR)
-		return InterpretPiUsbError(pi_error);;
-
-	if(at != pos) {
-		clock_t start = clock();
-		clock_t last = start;
-		while(!Busy() && at != pos && CLOCKDIFF(last = clock(), start) < MAX_WAIT) {
-			CDeviceUtils::SleepMs(0);
-
-			if((pi_error = piGetTwisterPosition(&at, handle_)) != PI_NO_ERROR)
-				return InterpretPiUsbError(pi_error);
-		};
-
-		if(CLOCKDIFF(last, start) >= MAX_WAIT)
-			LogMessage(VarFormat("Long wait (twister): %d / %d (%d != %d).", last - start, static_cast<int>(MAX_WAIT*CLOCKS_PER_SEC), at, pos), true);
-	};
-
-	return InterpretPiUsbError(pi_error);
+	return SetPositionSteps(static_cast<long>(pos / GetStepSizeUm()));
 }
 
 int CSIABTwister::GetPositionUm(double& pos)
 {
-	if(handle_ == NULL)
-		return DEVICE_NOT_CONNECTED;
-
-	int position, pi_error;
-	if ((pi_error = piGetTwisterPosition(&position, handle_)) == PI_NO_ERROR)
+	long position = 0;
+	int error;
+	if ((error = GetPositionSteps(position)) == DEVICE_OK)
 		pos = position * GetStepSizeUm();
 
-	return InterpretPiUsbError(pi_error);
+	return error;
 }
 
 double CSIABTwister::GetStepSizeUm()
@@ -464,19 +430,64 @@ double CSIABTwister::GetStepSizeUm()
 	return stepsize;
 }
 
-int CSIABTwister::SetPositionSteps(long /*steps*/)
+int CSIABTwister::SetPositionSteps(long steps)
 {
-	return DEVICE_NOT_YET_IMPLEMENTED;
+	if(handle_ == NULL)
+		return DEVICE_NOT_CONNECTED;
+
+	long min = TWISTER_LOWER_LIMIT_STEPS, max = TWISTER_UPPER_LIMIT_STEPS;
+	int error = DEVICE_OK;
+
+	if((error = GetStepLimits(min, max)) != DEVICE_OK)
+		return error;
+
+	steps = steps < min ? min : (steps > max ? max : steps); // Clamp to min..max
+
+	int to = static_cast<int>(steps);
+	int pi_error = piRunTwisterToPosition(to, velocity_, handle_); // Be sure not to confuse errors...
+
+	if(pi_error != PI_NO_ERROR)
+		return InterpretPiUsbError(pi_error);
+
+	int at = 0;
+	if((pi_error = piGetTwisterPosition(&at, handle_)) != PI_NO_ERROR)
+		return InterpretPiUsbError(pi_error);;
+
+	if(at != to) {
+		clock_t start = clock();
+		clock_t last = start;
+		while(!Busy() && at != to && CLOCKDIFF(last = clock(), start) < MAX_WAIT) {
+			CDeviceUtils::SleepMs(0);
+
+			if((pi_error = piGetTwisterPosition(&at, handle_)) != PI_NO_ERROR)
+				return InterpretPiUsbError(pi_error);
+		};
+
+		if(CLOCKDIFF(last, start) >= MAX_WAIT)
+			LogMessage(VarFormat("Long wait (twister): %d / %d (%d != %d).", last - start, static_cast<int>(MAX_WAIT*CLOCKS_PER_SEC), at, to), true);
+	};
+
+	return InterpretPiUsbError(pi_error);
 }
 
-int CSIABTwister::GetPositionSteps(long& /*steps*/)
+int CSIABTwister::GetPositionSteps(long& steps)
 {
-	return DEVICE_NOT_YET_IMPLEMENTED;
+	if(handle_ == NULL)
+		return DEVICE_NOT_CONNECTED;
+
+	int position, pi_error;
+	if ((pi_error = piGetTwisterPosition(&position, handle_)) == PI_NO_ERROR)
+		steps = static_cast<long>(position);
+
+	return InterpretPiUsbError(pi_error);
 }
 
 int CSIABTwister::SetOrigin()
 {
-	return DEVICE_NOT_YET_IMPLEMENTED;
+	if(handle_ == NULL)
+		return DEVICE_NOT_CONNECTED;
+
+	return InterpretPiUsbError(piSetTwisterPositionZero(handle_));
 }
 
 int CSIABTwister::GetLimits(double& lower, double& upper)
@@ -488,6 +499,20 @@ int CSIABTwister::GetLimits(double& lower, double& upper)
 
 	if((error = GetProperty(g_Keyword_Max, upper)) != DEVICE_OK)
 		return error;
+
+	return DEVICE_OK;
+}
+
+int CSIABTwister::GetStepLimits(long& lower, long& upper)
+{
+	double low, high, stepsize = GetStepSizeUm();
+	int error;
+	
+	if((error = GetLimits(low, high)) != DEVICE_OK)
+		return error;
+
+	lower = static_cast<long>(low / stepsize);
+	upper = static_cast<long>(high / stepsize);
 
 	return DEVICE_OK;
 }
@@ -593,18 +618,36 @@ double CSIABStage::GetStepSizeUm()
 
 int CSIABStage::SetPositionUm(double pos)
 {
+	return SetPositionSteps(static_cast<long>(pos / GetStepSizeUm()));
+}
+
+int CSIABStage::GetPositionUm(double& pos)
+{
 	if(handle_ == NULL)
 		return DEVICE_NOT_CONNECTED;
 
-	double min = MOTOR_LOWER_LIMIT, max = MOTOR_UPPER_LIMIT;
+	int error;
+	long position = 0;
+	if ((error = GetPositionSteps(position)) == DEVICE_OK)
+		pos = position * GetStepSizeUm();
+
+	return error;
+}
+
+int CSIABStage::SetPositionSteps(long steps)
+{
+	if(handle_ == NULL)
+		return DEVICE_NOT_CONNECTED;
+
+	long min = MOTOR_LOWER_LIMIT_STEPS, max = MOTOR_UPPER_LIMIT_STEPS;
 	int error = DEVICE_OK;
 
-	if((error = GetLimits(min, max)) != DEVICE_OK)
+	if((error = GetStepLimits(min, max)) != DEVICE_OK)
 		return error;
 
-	pos = pos < min ? min : (pos > max ? max : pos); // Clamp to min..max
+	steps = steps < min ? min : (steps > max ? max : steps); // Clamp to min..max
 
-	int to = static_cast<int>(pos / GetStepSizeUm());
+	int to = static_cast<int>(steps);
 
 	int pi_error = piRunMotorToPosition(to, velocity_, handle_);
 
@@ -634,26 +677,16 @@ int CSIABStage::SetPositionUm(double pos)
 	return InterpretPiUsbError(pi_error);
 }
 
-int CSIABStage::GetPositionUm(double& pos)
+int CSIABStage::GetPositionSteps(long& steps)
 {
 	if(handle_ == NULL)
 		return DEVICE_NOT_CONNECTED;
 
 	int position, pi_error;
 	if ((pi_error = piGetMotorPosition(&position, handle_)) == PI_NO_ERROR)
-		pos = position * GetStepSizeUm();
+		steps = static_cast<long>(position);
 
 	return InterpretPiUsbError(pi_error);
-}
-
-int CSIABStage::SetPositionSteps(long /*steps*/)
-{
-	return DEVICE_NOT_YET_IMPLEMENTED;
-}
-
-int CSIABStage::GetPositionSteps(long& /*steps*/)
-{
-	return DEVICE_NOT_YET_IMPLEMENTED;
 }
 
 int CSIABStage::SetOrigin()
@@ -670,6 +703,20 @@ int CSIABStage::GetLimits(double& lower, double& upper)
 
 	if((error = GetProperty(g_Keyword_Max, upper)) != DEVICE_OK)
 		return error;
+
+	return DEVICE_OK;
+}
+
+int CSIABStage::GetStepLimits(long& lower, long& upper)
+{
+	double low, high, stepsize = GetStepSizeUm();
+	int error;
+
+	if((error = GetLimits(low, high)) != DEVICE_OK)
+		return error;
+
+	lower = static_cast<long>(low / stepsize);
+	upper = static_cast<long>(high / stepsize);
 
 	return DEVICE_OK;
 }
@@ -828,20 +875,58 @@ void CSIABXYStage::GetName(char* name) const
 
 int CSIABXYStage::SetPositionUm(double x, double y)
 {
+	return SetPositionSteps(static_cast<long>(x / GetStepSizeXUm()), static_cast<int>(y / GetStepSizeYUm()));
+}
+
+int CSIABXYStage::GetPositionUm(double& x, double& y)
+{
+	int error;
+	long posX = MOTOR_LOWER_LIMIT_STEPS, posY = MOTOR_UPPER_LIMIT_STEPS;
+
+	if((error = GetPositionSteps(posX, posY)) != DEVICE_OK)
+		return error;
+
+	x = posX * GetStepSizeXUm();
+	y = posY * GetStepSizeYUm();
+
+	return DEVICE_OK;
+}
+
+int CSIABXYStage::GetLimitsUm(double& xMin, double& xMax, double& yMin, double& yMax)
+{
+	int error = DEVICE_OK;
+
+	if((error = GetProperty(g_Keyword_MinX, xMin)) != DEVICE_OK)
+		return error;
+
+	if((error = GetProperty(g_Keyword_MaxX, xMax)) != DEVICE_OK)
+		return error;
+
+	if((error = GetProperty(g_Keyword_MinY, yMin)) != DEVICE_OK)
+		return error;
+
+	if((error = GetProperty(g_Keyword_MaxY, yMax)) != DEVICE_OK)
+		return error;
+
+	return DEVICE_OK;
+}
+
+int CSIABXYStage::SetPositionSteps(long x, long y)
+{
 	if(handleX_ == NULL || handleY_ == NULL)
 		return DEVICE_NOT_CONNECTED;
 
-	double minX = MOTOR_LOWER_LIMIT, maxX = MOTOR_UPPER_LIMIT, minY = MOTOR_LOWER_LIMIT, maxY = MOTOR_UPPER_LIMIT;
+	long minX = MOTOR_LOWER_LIMIT_STEPS, maxX = MOTOR_UPPER_LIMIT_STEPS, minY = MOTOR_LOWER_LIMIT_STEPS, maxY = MOTOR_UPPER_LIMIT_STEPS;
 	int error = DEVICE_OK;
 
-	if((error = GetLimitsUm(minX, maxX, minY, maxY)) != DEVICE_OK)
+	if((error = GetStepLimits(minX, maxX, minY, maxY)) != DEVICE_OK)
 		return error;
 
 	x = x < minX ? minX : (x > maxX ? maxX : x);
 	y = y < minY ? minY : (y > maxY ? maxY : y);
 
-	int toX = static_cast<int>(x / GetStepSizeXUm());
-	int toY = static_cast<int>(y / GetStepSizeYUm());
+	int toX = static_cast<int>(x);
+	int toY = static_cast<int>(y);
 
 	int pi_error_x = piRunMotorToPosition(toX, velocityX_, handleX_);
 	int pi_error_y = piRunMotorToPosition(toY, velocityY_, handleY_) << 1;
@@ -874,64 +959,52 @@ int CSIABXYStage::SetPositionUm(double x, double y)
 	return InterpretPiUsbError(pi_error_x != PI_NO_ERROR ? pi_error_x : pi_error_y);
 }
 
-int CSIABXYStage::SetAdapterOriginUm(double /*x*/, double /*y*/)
-{
-	return DEVICE_NOT_YET_IMPLEMENTED;
-}
-
-int CSIABXYStage::GetPositionUm(double& x, double& y)
+int CSIABXYStage::GetPositionSteps(long& x, long& y)
 {
 	if(handleX_ == NULL || handleY_ == NULL)
 		return DEVICE_ERR;
 
-	int positionX, positionY;
+	int positionX = MOTOR_LOWER_LIMIT_STEPS, positionY = MOTOR_LOWER_LIMIT_STEPS;
 	if (piGetMotorPosition(&positionX, handleX_) ||
 			piGetMotorPosition(&positionY, handleY_))
 		return DEVICE_ERR;
 
-	x = positionX * GetStepSizeXUm();
-	y = positionY * GetStepSizeYUm();
+	x = static_cast<long>(positionX);
+	y = static_cast<long>(positionY);
 
 	return DEVICE_OK;
-}
-
-int CSIABXYStage::GetLimitsUm(double& xMin, double& xMax, double& yMin, double& yMax)
-{
-	int error = DEVICE_OK;
-
-	if((error = GetProperty(g_Keyword_MinX, xMin)) != DEVICE_OK)
-		return error;
-
-	if((error = GetProperty(g_Keyword_MaxX, xMax)) != DEVICE_OK)
-		return error;
-
-	if((error = GetProperty(g_Keyword_MinY, yMin)) != DEVICE_OK)
-		return error;
-
-	if((error = GetProperty(g_Keyword_MaxY, yMax)) != DEVICE_OK)
-		return error;
-
-	return DEVICE_OK;
-}
-
-int CSIABXYStage::SetPositionSteps(long /*x*/, long /*y*/)
-{
-	return DEVICE_NOT_YET_IMPLEMENTED;
-}
-
-int CSIABXYStage::GetPositionSteps(long& /*x*/, long& /*y*/)
-{
-	return DEVICE_NOT_YET_IMPLEMENTED;
 }
 
 int CSIABXYStage::Home()
 {
-	return DEVICE_NOT_YET_IMPLEMENTED;
+	if(handleX_ == NULL || handleY_ == NULL)
+		return DEVICE_NOT_CONNECTED;
+
+	int error;
+
+	if((error = piHomeMotor(velocityX_, handleX_)) != PI_NO_ERROR)
+		return InterpretPiUsbError(error);
+
+	if((error = piHomeMotor(velocityY_, handleY_)) != PI_NO_ERROR)
+		return InterpretPiUsbError(error);
+
+	return DEVICE_OK;
 }
 
 int CSIABXYStage::Stop()
 {
-	return DEVICE_NOT_YET_IMPLEMENTED;
+	if(handleX_ == NULL || handleY_ == NULL)
+		return DEVICE_NOT_CONNECTED;
+
+	int error;
+
+	if((error = piHaltMotor(handleX_)) != PI_NO_ERROR)
+		return InterpretPiUsbError(error);
+
+	if((error = piHaltMotor(handleY_)) != PI_NO_ERROR)
+		return InterpretPiUsbError(error);
+
+	return DEVICE_OK;
 }
 
 int CSIABXYStage::SetOrigin()
@@ -939,9 +1012,21 @@ int CSIABXYStage::SetOrigin()
 	return DEVICE_UNSUPPORTED_COMMAND;
 }
 
-int CSIABXYStage::GetStepLimits(long& /*xMin*/, long& /*xMax*/, long& /*yMin*/, long& /*yMax*/)
+int CSIABXYStage::GetStepLimits(long& xMin, long& xMax, long& yMin, long& yMax)
 {
-	return DEVICE_NOT_YET_IMPLEMENTED;
+	int error;
+	double xMinUm, xMaxUm, yMinUm, yMaxUm;
+	double stepsizeX = GetStepSizeXUm(), stepsizeY = GetStepSizeYUm();
+
+	if((error = GetLimitsUm(xMinUm, xMaxUm, yMinUm, yMaxUm)) != DEVICE_OK)
+		return error;
+
+	xMin = static_cast<long>(xMinUm / stepsizeX);
+	xMax = static_cast<long>(xMaxUm / stepsizeX);
+	yMin = static_cast<long>(yMinUm / stepsizeY);
+	yMax = static_cast<long>(yMaxUm / stepsizeY);
+
+	return DEVICE_OK;
 }
 
 double CSIABXYStage::GetStepSizeXUm()

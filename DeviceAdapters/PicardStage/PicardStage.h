@@ -48,6 +48,7 @@ public:
 	int GetPositionSteps(long& steps);
 	int SetOrigin();
 	int GetLimits(double& lower, double& upper);
+	int GetStepLimits(long& lower, long& upper);
 	int IsStageSequenceable(bool& isSequenceable) const;
 	bool IsContinuousFocusDrive() const;
 
@@ -83,6 +84,7 @@ public:
 	int GetPositionSteps(long& steps);
 	int SetOrigin();
 	int GetLimits(double& lower, double& upper);
+	int GetStepLimits(long& lower, long& upper);
 	int IsStageSequenceable(bool& isSequenceable) const;
 	bool IsContinuousFocusDrive() const;
 
@@ -113,7 +115,6 @@ public:
 	void GetName(char* name) const;
 
 	int SetPositionUm(double x, double y);
-	int SetAdapterOriginUm(double x, double y);
 	int GetPositionUm(double& x, double& y);
 	int SetPositionSteps(long x, long y);
 	int GetPositionSteps(long& x, long& y);
