@@ -246,6 +246,8 @@ inline static int OnSerialGeneric(MM::PropertyBase* pProp, MM::ActionType eAct, 
 			}
 
 			pProp->Set(static_cast<long>(serial));
+
+			break;
 		}
 	case MM::AfterSet:
 		{
