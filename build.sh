@@ -56,11 +56,11 @@ plattxt="$(echo $platform | tr '[:lower:]' '[:upper:]')"
 
 banner "PREPARING BUILD ENVIRONMENT";
 
-sh prepare-for-build.sh;
+sh prepare-for-build.sh $platform;
 
 if ! [ "${JAVA_HOME}" ];
 then
-	export JAVA_HOME="$(pwd)/bin_Win32/java/win32/jdk1.6.0_24";
+	export JAVA_HOME="$(pwd)/bin_$platform/java/$platform/jdk1.6.0_24";
 
 	if ! test -f "$JAVA_HOME/include/jni.h";
 	then
@@ -80,7 +80,13 @@ test -x $msbuild || die "Couldn't find msbuild.exe ($msbuild). No .NET framework
 echo "Found msbuild.exe at $msbuild (fw "$dotnetfwver").";
 
 # TODO: Is this recorded anywhere definitive?
+
 ant="$(pwd)/../3rdpartypublic/apache-ant-1.9.2/bin/ant";
+
+if ! test -x "$ant";
+then
+	ant="$(which ant)";
+fi;
 
 test -x $ant || die "Couldn't find Apache Ant at $ant. Did you pull 3rdpartypublic?";
 
