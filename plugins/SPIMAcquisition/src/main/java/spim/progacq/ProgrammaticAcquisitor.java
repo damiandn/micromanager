@@ -211,7 +211,7 @@ public class ProgrammaticAcquisitor {
 			f.addStagePositionToTags(ti);
 			f.addImage(MMStudioMainFrame.SIMPLE_ACQ, ti, true, false);
 		} catch (Throwable t) {
-			ReportingUtils.logException("Attemped to update live window.", t);
+			ReportingUtils.logError(t, "Attemped to update live window.");
 		}
 	}
 

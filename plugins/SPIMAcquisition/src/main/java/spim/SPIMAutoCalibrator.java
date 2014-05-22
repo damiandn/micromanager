@@ -537,7 +537,7 @@ public class SPIMAutoCalibrator extends JFrame implements SPIMCalibrator, Action
 		try {
 			ti.tags.put("Summary", MMStudioMainFrame.getInstance().getAcquisition(MMStudioMainFrame.SIMPLE_ACQ).getSummaryMetadata());
 		} catch (MMScriptException ex) {
-			ReportingUtils.logError("Error adding summary metadata to tags");
+			ReportingUtils.logError(ex, "Error adding summary metadata to tags");
 		}
 		gui.addStagePositionToTags(ti);
 	}

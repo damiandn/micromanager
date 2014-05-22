@@ -185,7 +185,7 @@ public class SPIMAcquisition implements MMPlugin, ItemListener, ActionListener {
 		if (prefs != null) try {
 			prefs.sync();
 		} catch (BackingStoreException e) {
-			ReportingUtils.logException("Could not write preferences: ", e);
+			ReportingUtils.logError(e, "Could not write preferences: ");
 		}
 		frame.dispose();
 		frame = null;
@@ -248,7 +248,7 @@ public class SPIMAcquisition implements MMPlugin, ItemListener, ActionListener {
 				liveControlsHooked = listener.attach(win.getCanvas(), setup, calibration, -1);
 			}
 		} else {
-			ReportingUtils.logException("Couldn't set hooked=" + hook, new NullPointerException("win=" + win + ", val?" + win.isValid() + ", vis?" + win.isVisible()));
+			ReportingUtils.logError(new NullPointerException("win=" + win + ", val?" + win.isValid() + ", vis?" + win.isVisible()), "Couldn't set hooked=" + hook);
 		}
 	}
 
@@ -264,7 +264,7 @@ public class SPIMAcquisition implements MMPlugin, ItemListener, ActionListener {
 				ReportingUtils.logMessage("Defined uncalibrated pixel size (1:1).");
 			}
 		} catch (Exception e) {
-			ReportingUtils.logException("Couldn't define uncalibrated pixel size: ", e);
+			ReportingUtils.logError(e, "Couldn't define uncalibrated pixel size: ");
 		}
 	}
 
