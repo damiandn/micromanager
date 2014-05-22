@@ -228,7 +228,7 @@ public class SPIMAutoCalibrator extends JFrame implements SPIMCalibrator, Action
 		List<net.imglib2.Point> peaks = LocalExtrema.findLocalExtrema(
 			ImagePlusAdapter.wrapShort(imp),
 			new LocalExtrema.MaximumCheck<UnsignedShortType>(new UnsignedShortType((int)(imp.getProcessor().getMin() + imp.getProcessor().getMax())/2)),
-			Runtime.getRuntime().availableProcessors()
+			java.util.concurrent.Executors.newCachedThreadPool()
 		);
 
 		if(peaks.size() > 0) {
