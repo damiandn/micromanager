@@ -1,0 +1,161 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+						http://maven.apache.org/xsd/maven-4.0.0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+
+	<groupId>org.micromanager</groupId>
+	<artifactId>mmstudio</artifactId>
+	<version>1.4.18-SNAPSHOT</version>
+	<packaging>jar</packaging>
+
+	<properties>
+		<mm.basedir>${project.basedir}/..</mm.basedir>
+		<classext>${project.basedir}/../../3rdpartypublic/classext</classext>
+	</properties>
+
+	<build>
+		<sourceDirectory>src</sourceDirectory>
+		<outputDirectory>build</outputDirectory>
+		<directory>${mm.basedir}/build/Java</directory>
+		<finalName>MMJ_</finalName>
+		<resources>
+			<resource>
+				<targetPath>.</targetPath>
+				<directory>build</directory>
+				<includes>
+					<include>plugins.config</include>
+				</includes>
+			</resource>
+			<resource>
+				<targetPath>.</targetPath>
+				<directory>src</directory>
+				<excludes>
+					<exclude>*.java</exclude>
+					<exclude>*.class</exclude>
+				</excludes>
+			</resource>
+		</resources>
+		<plugins>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-antrun-plugin</artifactId>
+				<version>1.7</version>
+				<executions>
+					<execution>
+						<id>copy-plugins-config</id>
+						<phase>process-resources</phase>
+						<configuration>
+							<target>
+								<copy file="pom.xml" toFile="otherpom.xml" />
+								<copy file="bin/plugins_mmstudio.config" toFile="build/plugins.config" />
+							</target>
+						</configuration>
+						<goals>
+							<goal>run</goal>
+						</goals>
+					</execution>
+					<execution>
+						<id>cleanup-maven-litter</id>
+						<phase>package</phase>
+						<configuration>
+							<target>
+								<delete dir="${mm.basedir}/build/Java/antrun" quiet="false" failonerror="true" />
+								<delete dir="${mm.basedir}/build/Java/maven-archiver" quiet="false" failonerror="true" />
+							</target>
+						</configuration>
+						<goals>
+							<goal>run</goal>
+						</goals>
+					</execution>
+				</executions>
+			</plugin>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-jar-plugin</artifactId>
+				<version>2.4</version>
+				<configuration>
+					<archive>
+						<manifest>
+							<mainClass>org.micromanager.MMStudioMainFrame</mainClass>
+						</manifest>
+					</archive>
+				</configuration>
+			</plugin>
+		</plugins>
+	</build>
+
+	<dependencies>
+		<dependency>
+			<groupId>org.beanshell</groupId>
+			<artifactId>bsh</artifactId>
+			<version>2.0b5</version> <!-- 3rdpartypublic version: 2.0b4 -->
+		</dependency>
+		<dependency>
+			<groupId>org.apache.commons</groupId>
+			<artifactId>commons-math3</artifactId>
+			<version>3.3</version> <!-- 3rdpartypublic version: 3.2 (used to be 2.2; some plugins still use 2.2...) -->
+		</dependency>
+		<dependency>
+			<groupId>com.google.code.gson</groupId>
+			<artifactId>gson</artifactId>
+			<version>2.2.4</version> <!-- 3rdpartypublic version: 2.2.4 (hooray) -->
+		</dependency>
+		<dependency>
+			<groupId>com.google.guava</groupId>
+			<artifactId>guava</artifactId>
+			<version>17.0</version> <!-- 3rdpartypublic version: 17.0 -->
+		</dependency>
+		<dependency>
+			<groupId>net.imagej</groupId>
+			<artifactId>ij</artifactId>
+			<version>1.49b</version> <!-- 3rdpartypublic version: 1.47* -->
+		</dependency>
+		<dependency>
+			<groupId>com.miglayout</groupId>
+			<artifactId>miglayout-swing</artifactId>
+			<version>4.2</version> <!-- 3rdpartypublic version: 4.0 -->
+		</dependency>
+		<dependency>
+			<groupId>org.micromanager</groupId>
+			<artifactId>MMCoreJ</artifactId>
+			<version>LATEST</version> <!-- Installed locally by the build scripts. As a JNI project, building with Maven might be cumbersome, so we still use ant for this. -->
+		</dependency>
+		<dependency>
+			<groupId>com.fifesoft</groupId>
+			<artifactId>rsyntaxtextarea</artifactId>
+			<version>2.5.3</version> <!-- 3rdpartypublic version: 2.5.2 (Not available on Maven Central.) -->
+			<scope>system</scope>
+			<systemPath>${classext}/rsyntaxtextarea.jar</systemPath>
+		</dependency>
+		<dependency>
+			<groupId>ome</groupId>
+			<artifactId>scifio</artifactId>
+			<version>5.0.0-rc2</version> <!-- 3rdpartypublic version: Unknown -->
+		</dependency>
+		<dependency>
+			<groupId>ome</groupId>
+			<artifactId>ome-xml</artifactId>
+			<version>5.0.0-rc2</version> <!-- 3rdpartypublic version: Unknown -->
+		</dependency>
+		<dependency>
+			<groupId>ome</groupId>
+			<artifactId>loci-legacy</artifactId>
+			<version>5.0.0-rc2</version> <!-- 3rdpartypublic version: Unknown -->
+		</dependency>
+		<dependency>
+			<groupId>org.swinglabs</groupId>
+			<artifactId>swing-layout</artifactId>
+			<version>1.0.4</version> <!-- 3rdpartypublic version: 1.0.4 (Not available on Maven Central.) -->
+			<scope>system</scope>
+			<systemPath>${classext}/swing-layout-1.0.4.jar</systemPath>
+		</dependency>
+	</dependencies>
+
+	<repositories>
+		<repository>
+			<id>imagej.public</id>
+			<url>http://maven.imagej.net/content/groups/public</url>
+		</repository>
+	</repositories>
+</project>
