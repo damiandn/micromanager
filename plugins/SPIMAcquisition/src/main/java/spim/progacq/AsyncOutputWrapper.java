@@ -2,32 +2,51 @@ package spim.progacq;
 
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
-
 import java.awt.Color;
+import java.io.File;
 import java.lang.InterruptedException;
 import java.lang.Thread.UncaughtExceptionHandler;
 import java.nio.channels.ClosedByInterruptException;
 
 import org.micromanager.utils.ReportingUtils;
 
+import ij.IJ;
 import ij.ImagePlus;
 import ij.process.ImageProcessor;
-
 import mmcorej.TaggedImage;
 
 public class AsyncOutputWrapper implements AcqOutputHandler, UncaughtExceptionHandler {
+	private static double memPercent() {
+		return (double)ij.IJ.currentMemory() / (double)ij.IJ.maxMemory();
+	}
+
 	private static class IPC {
 		public static enum Type {
-			StartStack,
-			Slice,
-			EndStack,
+			NONE,
+			START_STACK,
+			MEMORY,
+			DISK,
+			END_STACK,
 		}
 
-		public IPC(Type type, int tp, int view, ImageProcessor ip, double x, double y, double z, double t, double dt) {
-			this.type = type;
+		public IPC(Type kind, int tp, int view) {
+			if(kind != Type.START_STACK && kind != Type.END_STACK)
+				throw new IllegalArgumentException("Slice type specified but no slice information given.");
+
 			this.tp = tp;
 			this.view = view;
+			this.type = kind;
+			x = y = z = t = dt = 0;
+			ip = null;
+			path = null;
+		}
+
+		public IPC(ImageProcessor ip, int tp, int view, double x, double y, double z, double t, double dt) {
+			this.tp = tp;
+			this.view = view;
+			this.type = Type.MEMORY;
 			this.ip = ip;
+			this.path = null;
 			this.x = x;
 			this.y = y;
 			this.z = z;
@@ -35,49 +54,68 @@ public class AsyncOutputWrapper implements AcqOutputHandler, UncaughtExceptionHa
 			this.dt = dt;
 		}
 
-		public int tp, view;
-		public ImageProcessor ip;
-		public double x, y, z, t, dt;
-		public Type type;
+		public IPC(File path, int tp, int view, double x, double y, double z, double t, double dt) {
+			this.tp = tp;
+			this.view = view;
+			this.type = Type.DISK;
+			this.ip = null;
+			this.path = path;
+			this.x = x;
+			this.y = y;
+			this.z = z;
+			this.t = t;
+			this.dt = dt;
+		}
+
+		public final int tp, view;
+		public final ImageProcessor ip;
+		public final File path;
+		public final double x, y, z, t, dt;
+		public final Type type;
 	}
 
-	private AcqOutputHandler handler;
-	private Thread writerThread, monitorThread;
-	private BlockingQueue<IPC> queue;
+	private final AcqOutputHandler handler;
+	private final Thread writerThread, monitorThread;
 	private Exception rethrow;
 
-	private volatile boolean finishing;
-	private volatile boolean writing = false;
+	private final double memQuota, diskQuota, freedGCRatio;
+	private final BlockingQueue<IPC> queue;
+	private volatile int onDisk, inMem, freed;
+	private final File tempDir, tempRoot;
+	private volatile long usedBytes;
+
+	private volatile boolean slowed, finishing;
+	private volatile IPC.Type writing = IPC.Type.NONE;
 
 	private Runnable monitorOp = new Runnable() {
 		@Override
 		public void run() {
-			ImageProcessor statusImg = new ij.process.ByteProcessor(256, 128);
+			ImageProcessor statusImg = new ij.process.ColorProcessor(400, 200);
 			statusImg.setColor(Color.WHITE);
 			statusImg.fill();
 			statusImg.setColor(Color.BLACK);
 			ImagePlus imp = new ImagePlus("Async Status", statusImg);
 			imp.show();
 
-			while(!Thread.interrupted()) {
+			while(!Thread.interrupted() && imp.isVisible()) {
 				int n = AsyncOutputWrapper.this.queue.size();
-				int m = AsyncOutputWrapper.this.queue.remainingCapacity();
-				String statStr = n + "/" + (n + m) + (AsyncOutputWrapper.this.writing ? " (Writing)" : " (Idle)");
+				String statStr = String.format("%d / ram: %d (%.0f%%) / hdd: %d (%.1f%%) / free: %d (%.1f%%) / %s", n, inMem, memPercent()*100, onDisk, diskPercent()*100, freed, 100.0 * (double)freed / (double)(inMem + freed + 1), AsyncOutputWrapper.this.writing.toString().toLowerCase());
 
-				int y = 16 + (int) (((double)m / (double)(n + m)) * (statusImg.getHeight() - 16));
+				statusImg.copyBits(statusImg, -1, 0, ij.process.Blitter.COPY);
 
 				statusImg.setColor(Color.WHITE);
-				statusImg.copyBits(statusImg, -1, 0, ij.process.Blitter.COPY);
 				statusImg.drawLine(statusImg.getWidth() - 1, 0, statusImg.getWidth() - 1, statusImg.getHeight());
 				statusImg.fill(new ij.gui.Roi(0, 0, statusImg.getWidth(), 16));
-				if(AsyncOutputWrapper.this.writing)
-				{
-					statusImg.setColor(Color.RED);
-					statusImg.drawPixel(statusImg.getWidth() - 1, statusImg.getHeight() - 1);
-				}
-				statusImg.setColor(Color.BLACK);
-				statusImg.drawPixel(statusImg.getWidth() - 1, y);
+
+				statusImg.setColor(Color.BLUE);
+				statusImg.drawLine(statusImg.getWidth() - 1, statusImg.getHeight() - 1, statusImg.getWidth() - 1, 16 + (int) ((statusImg.getHeight() - 16) * (1 - memPercent())));
+
+				statusImg.setColor(Color.RED);
+				statusImg.drawLine(statusImg.getWidth() - 1, statusImg.getHeight() - 1, statusImg.getWidth() - 1, 16 + (int) ((statusImg.getHeight() - 16) * (1 - diskPercent())));
+
+				statusImg.setColor(AsyncOutputWrapper.this.writing == IPC.Type.MEMORY ? Color.BLUE : (AsyncOutputWrapper.this.writing == IPC.Type.DISK ? Color.RED : Color.BLACK));
 				statusImg.drawString(statStr, 4, 16, Color.WHITE);
+
 				imp.updateAndDraw();
 
 				try {
@@ -97,8 +135,10 @@ public class AsyncOutputWrapper implements AcqOutputHandler, UncaughtExceptionHa
 			try {
 				while(!Thread.interrupted() && !AsyncOutputWrapper.this.finishing)
 				{
-					Thread.sleep(100);
-					handleNext();
+					if(AsyncOutputWrapper.this.slowed)
+						Thread.sleep(1000);
+
+					handleNext(false);
 				}
 
 				handleAll();
@@ -118,10 +158,45 @@ public class AsyncOutputWrapper implements AcqOutputHandler, UncaughtExceptionHa
 		}
 	};
 
-	public AsyncOutputWrapper(AcqOutputHandler handlerRef, long cap, boolean monitor) {
+	public AsyncOutputWrapper(File outputDir, AcqOutputHandler handlerRef, double memquota, double diskquota, double freedMemGCRatio, boolean monitor) throws Exception {
+		tempDir = new File(outputDir, "async-temp");
+		if(!tempDir.exists() && !tempDir.mkdirs())
+			throw new Exception("Unable to create temporary directory for async output.");
+		else if(tempDir.exists())
+			for(File f : tempDir.listFiles())
+				if(!f.delete())
+					throw new Exception("Unable to clean file " + f.getAbsolutePath());
+
+		tempDir.deleteOnExit();
+
+		File tmp = null;
+		for(File root : File.listRoots())
+		{
+			if(tempDir.getAbsolutePath().startsWith(root.getAbsolutePath()))
+			{
+				tmp = root;
+				break;
+			}
+		}
+
+		if(tmp == null)
+			throw new Exception("Unable to determine output directory filesystem root.");
+
+		tempRoot = tmp;
+		usedBytes = 0;
+
 		finishing = false;
+		slowed = true;
 		handler = handlerRef;
-		queue = new LinkedBlockingQueue<IPC>((int) cap);
+		queue = new LinkedBlockingQueue<IPC>();
+
+		diskQuota = diskquota;
+		memQuota = memquota;
+		freedGCRatio = freedMemGCRatio;
+
+		onDisk = 0;
+		inMem = 0;
+		freed = 0;
 		writerThread = new Thread(writerOp, "Async Output Handler Thread");
 		writerThread.setPriority(Thread.MIN_PRIORITY);
 		writerThread.setUncaughtExceptionHandler(this);
@@ -131,6 +206,7 @@ public class AsyncOutputWrapper implements AcqOutputHandler, UncaughtExceptionHa
 
 		if(monitor) {
 			monitorThread = new Thread(monitorOp, "Async Output Monitor Daemon");
+			monitorThread.setPriority(Thread.MIN_PRIORITY);
 			monitorThread.setDaemon(true);
 			monitorThread.start();
 		} else {
@@ -155,9 +231,11 @@ public class AsyncOutputWrapper implements AcqOutputHandler, UncaughtExceptionHa
 		if(rethrow != null)
 			throw rethrow;
 
-		IPC store = new IPC(IPC.Type.StartStack, timepoint, view, null, 0, 0, 0, 0, (double) axis);
+		slowed = true;
+
+		IPC store = new IPC(IPC.Type.START_STACK, timepoint, view);
 		if(!queue.offer(store)) {
-			handleNext();
+			handleNext(true);
 			queue.put(store);
 		}
 	}
@@ -168,9 +246,27 @@ public class AsyncOutputWrapper implements AcqOutputHandler, UncaughtExceptionHa
 		if(rethrow != null)
 			throw rethrow;
 
-		IPC store = new IPC(IPC.Type.Slice, tp, view, ip, X, Y, Z, theta, deltaT);
+		final IPC store;
+
+		while(memPercent() > memQuota && diskPercent() > diskQuota)
+			handleNext(true);
+
+		if(memPercent() < memQuota) {
+			store = new IPC(ip, tp, view, X, Y, Z, theta, deltaT);
+			++inMem;
+		} else {
+			File path = File.createTempFile("async_", ".tif", tempDir);
+			ImagePlus imp = new ImagePlus("", ip);
+			ij.IJ.saveAsTiff(imp, path.getAbsolutePath());
+			imp.close();
+			path.deleteOnExit();
+			store = new IPC(path, tp, view, X, Y, Z, theta, deltaT);
+			++onDisk;
+			usedBytes += path.length();
+		}
+
 		if(!queue.offer(store)) {
-			handleNext();
+			handleNext(true);
 			queue.put(store);
 		}
 	}
@@ -180,11 +276,13 @@ public class AsyncOutputWrapper implements AcqOutputHandler, UncaughtExceptionHa
 		if(rethrow != null)
 			throw rethrow;
 
-		IPC store = new IPC(IPC.Type.EndStack, tp, view, null, 0, 0, 0, 0, (double) depth);
+		IPC store = new IPC(IPC.Type.END_STACK, timepoint, view);
 		if(!queue.offer(store)) {
-			handleNext();
+			handleNext(true);
 			queue.put(store);
 		}
+
+		slowed = false;
 	}
 
 	@Override
@@ -192,6 +290,7 @@ public class AsyncOutputWrapper implements AcqOutputHandler, UncaughtExceptionHa
 		if(rethrow != null)
 			throw rethrow;
 
+		slowed = false;
 		finishing = true; // Tell the writer thread to finish up...
 		writerThread.setPriority(Thread.MAX_PRIORITY); // ...and give it more CPU time.
 
@@ -217,30 +316,66 @@ public class AsyncOutputWrapper implements AcqOutputHandler, UncaughtExceptionHa
 		synchronized(handler) {
 			handler.finalizeAcquisition();
 		}
+
+		if(usedBytes > 0)
+			IJ.log("Warning: Async exited with " + usedBytes + " bytes of HDD still used. Check the output directory temporary async files.");
+
+		if(!tempDir.delete() && usedBytes == 0)
+			IJ.log("Notice: Couldn't delete temporary async directory, though it seems to be empty.");
 	}
 
-	private synchronized void handleNext() throws Exception {
+	private synchronized void handleNext(boolean triage) throws Exception {
 		if(rethrow != null)
 			throw rethrow;
 
 		IPC write = queue.peek();
 		if(write != null) {
+			queue.take();
+			writing = write.type;
+
 			synchronized(handler) {
-				writing = true;
 				switch(write.type){
-				case StartStack:
-					handler.beginStack(write.tp, write.view);
-					break;
-				case Slice:
-					handler.processSlice(write.tp, write.view, write.ip, write.x, write.y, write.z, write.t, write.dt);
-					break;
-				case EndStack:
-					handler.finalizeStack(write.tp, write.view);
-					break;
+					case START_STACK: {
+						handler.beginStack(write.tp, write.view);
+						break;
+					}
+					case MEMORY: {
+						handler.processSlice(write.tp, write.view, write.ip, write.x, write.y, write.z, write.t, write.dt);
+						--inMem;
+						++freed;
+
+						break;
+					}
+					case DISK: {
+						ImagePlus imp = ij.IJ.openImage(write.path.getAbsolutePath());
+						handler.processSlice(write.tp, write.view, imp.getProcessor(), write.x, write.y, write.z, write.t, write.dt);
+						imp.close();
+						usedBytes -= write.path.length();
+						if(!write.path.delete())
+							IJ.log("Warning: Couldn't delete temporary async image " + write.path.getAbsolutePath());
+						--onDisk;
+
+						break;
+					}
+					case END_STACK: {
+						handler.finalizeStack(write.tp, write.view);
+						break;
+					}
+					case NONE: {
+						break;
+					}
 				}
-				writing = false;
 			}
-			queue.remove(write);
+
+			double freeratio = (double) freed / (double) (inMem + freed + 1);
+			if((triage && freeratio > freedGCRatio/4) || (!slowed && freeratio > freedGCRatio))
+			{
+				System.gc();
+				System.gc();
+				freed = 0;
+			}
+
+			writing = IPC.Type.NONE;
 		}
 	}
 
@@ -253,7 +388,7 @@ public class AsyncOutputWrapper implements AcqOutputHandler, UncaughtExceptionHa
 		};
 
 		while(!queue.isEmpty())
-			handleNext();
+			handleNext(false);
 	}
 
 	@Override
@@ -268,5 +403,9 @@ public class AsyncOutputWrapper implements AcqOutputHandler, UncaughtExceptionHa
 		};
 
 		rethrow = (Exception)exc;
+	}
+
+	private double diskPercent() {
+		return (double) usedBytes / (double) (usedBytes + tempRoot.getFreeSpace() + 1);
 	}
 }

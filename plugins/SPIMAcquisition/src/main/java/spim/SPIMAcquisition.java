@@ -144,6 +144,7 @@ public class SPIMAcquisition implements MMPlugin, ItemListener, ActionListener {
 	protected JButton speedControl, ohSnap;
 	protected JFrame acqOptionsFrame;
 	protected JCheckBox asyncMonitorCheckbox, acqProfileCheckbox;
+	protected JSpinner asyncMemQuota, asyncDiskQuota, asyncGCRatio;
 
 	protected boolean updateLiveImage;
 
@@ -982,6 +983,11 @@ public class SPIMAcquisition implements MMPlugin, ItemListener, ActionListener {
 		bottom.add(timeoutBox);
 
 		asyncMonitorCheckbox = new JCheckBox(/*"Monitor Async Output"*/);
+
+		asyncMemQuota = new JSpinner(new SpinnerNumberModel(0.8, 0.0, 1.0, 0.05));
+		asyncDiskQuota = new JSpinner(new SpinnerNumberModel(0.9, 0.0, 1.0, 0.05));
+		asyncGCRatio = new JSpinner(new SpinnerNumberModel(0.5, 0.0, 1.0, 0.05));
+
 		acqProfileCheckbox = new JCheckBox(/*"Profile Acquisition"*/);
 
 		acqOptionsFrame = new JFrame("Acquisition Options");
@@ -990,6 +996,9 @@ public class SPIMAcquisition implements MMPlugin, ItemListener, ActionListener {
 				"Continuous Mode:", continuousCheckbox,
 				"SPIM Registration:", registrationCheckbox,
 				"Monitor Async Output:", asyncMonitorCheckbox,
+				"\tMemory Quota:", asyncMemQuota,
+				"\tDisk Quota:", asyncDiskQuota,
+				"\tGC Aggression:", asyncGCRatio,
 				"Profile Acquisition:", acqProfileCheckbox
 		);
 		optsPanel.setBorder(BorderFactory.createEmptyBorder(4, 4, 4, 4));
@@ -1788,8 +1797,12 @@ public class SPIMAcquisition implements MMPlugin, ItemListener, ActionListener {
 					AcqOutputHandler handler = new OMETIFFHandler(
 						setup, output, acqRows, timeSeqs, timeStep
 					);
-					if(asyncCheckbox.isSelected())
-						handler = new AsyncOutputWrapper(handler, (ij.IJ.maxMemory() - ij.IJ.currentMemory())/(mmc.getImageWidth()*mmc.getImageHeight()*mmc.getBytesPerPixel()*2), asyncMonitorCheckbox.isSelected());
+					if(asyncCheckbox.isSelected()) try {
+						handler = new AsyncOutputWrapper(output, handler, (Double) asyncMemQuota.getValue(), (Double) asyncDiskQuota.getValue(), 1.0 - (Double) asyncGCRatio.getValue(), asyncMonitorCheckbox.isSelected());
+					} catch (Exception e) {
+						JOptionPane.showMessageDialog(null, "Couldn't set up output: " + e.getMessage());
+						return;
+					}
 
 					params.setOutputHandler(handler);
 				} else {
