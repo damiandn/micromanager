@@ -800,6 +800,8 @@ public class SPIMAcquisition implements MMPlugin, ItemListener, ActionListener {
 			public void valueChanged() {
 				try {
 					setup.getLaser().setPower(getValue() / 1000D); // laser api is in W
+				} catch (UnsupportedOperationException uoe) {
+					laserSlider.setEnabled(false);
 				} catch (Exception e) {
 					ReportingUtils.logError(e);
 				}
@@ -1046,7 +1048,7 @@ public class SPIMAcquisition implements MMPlugin, ItemListener, ActionListener {
 
 	@SuppressWarnings("serial")
 	private static SteppedSlider makeStageSlider(final SPIMSetup setup, final SPIMDevice dev, double min, double max, double step, int options) {
-		if(setup.getDevice(dev) == null || !(setup.getDevice(dev) instanceof Stage))
+		if(setup.getDevice(dev) != null && !(setup.getDevice(dev) instanceof Stage))
 			throw new IllegalArgumentException("makeStageSliderSafe given a non-Stage device");
 
 		Stage stage = (Stage) setup.getDevice(dev);
@@ -1056,7 +1058,7 @@ public class SPIMAcquisition implements MMPlugin, ItemListener, ActionListener {
 		step = stage != null ? stage.getStepSize() : step;
 		double def = stage != null ? stage.getPosition() : 0;
 
-		return new SteppedSlider(dev.getText(), min, max, step, def, options) {
+		SteppedSlider out = new SteppedSlider(dev.getText(), min, max, step, def, options) {
 			@Override
 			public void valueChanged() {
 				if(setup.getDevice(dev) == null)
@@ -1065,6 +1067,11 @@ public class SPIMAcquisition implements MMPlugin, ItemListener, ActionListener {
 				((Stage)setup.getDevice(dev)).setPosition(getValue());
 			}
 		};
+
+		if(stage == null)
+			out.setEnabled(false);
+
+		return out;
 	}
 
 	private static String[] units = {
