@@ -881,6 +881,7 @@ public class SPIMAcquisition implements MMPlugin, ItemListener, ActionListener {
 
 		acqSaveDir = new JTextField(48);
 		acqSaveDir.setEnabled(true);
+		acqSaveDir.setText(prefsGet("outputdir", ""));
 
 		asyncCheckbox = new JCheckBox("Asynchronous Output");
 		asyncCheckbox.setSelected(true);
@@ -895,8 +896,10 @@ public class SPIMAcquisition implements MMPlugin, ItemListener, ActionListener {
 				fc.setFileSelectionMode(VIDEO_RECORDER.equals(acqPosTabs.getSelectedComponent().getName()) ?
 						JFileChooser.FILES_AND_DIRECTORIES : JFileChooser.DIRECTORIES_ONLY);
 
-				if(fc.showDialog(frame, "Select") == JFileChooser.APPROVE_OPTION)
+				if(fc.showDialog(frame, "Select") == JFileChooser.APPROVE_OPTION) {
 					acqSaveDir.setText(fc.getSelectedFile().getAbsolutePath());
+					prefsSet("outputdir", acqSaveDir.getText());
+				}
 			};
 		});
 
@@ -1370,6 +1373,17 @@ public class SPIMAcquisition implements MMPlugin, ItemListener, ActionListener {
 	public static void prefsSet(String key, double value) {
 		if (key != null)
 			prefs.putDouble(key, value);
+	}
+	
+	public static String prefsGet(String key, String defaultValue) {
+		if (key == null)
+			return defaultValue;
+		return prefs.get(key, defaultValue);
+	}
+	
+	public static void prefsSet(String key, String value) {
+		if (key != null)
+			prefs.put(key, value);
 	}
 
 	// Accessing the devices
