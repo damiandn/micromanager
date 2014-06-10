@@ -14,7 +14,7 @@ public class OutputAsStackHandler implements AcqOutputHandler {
 	}
 
 	@Override
-	public void processSlice(ImageProcessor ip, double X, double Y, double Z, double theta, double deltaT)
+	public void processSlice(int timepoint, int view, ImageProcessor ip, double X, double Y, double Z, double theta, double deltaT)
 			throws Exception {
 		if(stack == null)
 			stack = new ImageStack(ip.getWidth(), ip.getHeight());
@@ -33,13 +33,13 @@ public class OutputAsStackHandler implements AcqOutputHandler {
 	}
 
 	@Override
-	public void finalizeStack(int depth) throws Exception {
+	public void finalizeStack(int timepoint, int view) throws Exception {
 		// TODO Auto-generated method stub
 		
 	}
 
 	@Override
-	public void beginStack(int axis) throws Exception {
+	public void beginStack(int timepoint, int view) throws Exception {
 		// TODO Auto-generated method stub
 		
 	}

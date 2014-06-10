@@ -130,8 +130,8 @@ public class OMETIFFHandler implements AcqOutputHandler {
 	}
 
 	@Override
-	public void beginStack(int axis) throws Exception {
-		ReportingUtils.logMessage("Beginning stack along dimension " + axis);
+	public void beginStack(int timepoint, int view) throws Exception {
+		ReportingUtils.logMessage("Beginning stack for timepoint " + timepoint + ", view " + view);
 
 		if(++imageCounter < stacks * timesteps)
 			openWriter(imageCounter % stacks, imageCounter / stacks);
@@ -149,7 +149,7 @@ public class OMETIFFHandler implements AcqOutputHandler {
 	}
 
 	@Override
-	public void processSlice(ImageProcessor ip, double X, double Y, double Z, double theta, double deltaT)
+	public void processSlice(int timepoint, int view, ImageProcessor ip, double X, double Y, double Z, double theta, double deltaT)
 			throws Exception {
 		long bitDepth = core.getImageBitDepth();
 		byte[] data = bitDepth == 8 ?
@@ -167,12 +167,13 @@ public class OMETIFFHandler implements AcqOutputHandler {
 		meta.setPlaneTheT(new NonNegativeInteger(timePoint), image, plane);
 		meta.setPlaneDeltaT(deltaT, image, plane);
 
+
 		storeDouble(image, plane, 0, "Theta", theta);
 
 		try {
 			writer.saveBytes(plane, data);
 		} catch(java.io.IOException ioe) {
-			finalizeStack(0);
+			finalizeStack(timepoint, view);
 			if(writer != null)
 				writer.close();
 			throw new Exception("Error writing OME-TIFF.", ioe);
@@ -182,8 +183,8 @@ public class OMETIFFHandler implements AcqOutputHandler {
 	}
 
 	@Override
-	public void finalizeStack(int depth) throws Exception {
-		ReportingUtils.logMessage("Finished stack along dimension " + depth);
+	public void finalizeStack(int timepoint, int view) throws Exception {
+		ReportingUtils.logMessage("Finished stack of view " + view + " at timepoint " + timepoint);
 	}
 
 	@Override

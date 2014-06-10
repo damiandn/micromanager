@@ -390,7 +390,7 @@ public class ProgrammaticAcquisitor {
 				if(params.doProfiling())
 					prof.get("Output").start();
 
-				handler.beginStack(0);
+				handler.beginStack(tp, rown);
 
 				if(params.doProfiling())
 					prof.get("Output").stop();
@@ -403,7 +403,7 @@ public class ProgrammaticAcquisitor {
 						TaggedImage ti = snapImage(setup, !params.isIllumFullStack());
 						ImageProcessor ip = ImageUtils.makeProcessor(ti);
 
-						handleSlice(core, setup, metaDevs, acqBegan, ip, handler);
+						handleSlice(core, setup, metaDevs, acqBegan, tp, rown, ip, handler);
 						if(ad != null)
 							tallyAntiDriftSlice(core, setup, row, ad, ip);
 						if(params.isUpdateLive())
@@ -441,7 +441,7 @@ public class ProgrammaticAcquisitor {
 								prof.get("Output").start();
 
 							ImageProcessor ip = ImageUtils.makeProcessor(ti);
-							handleSlice(core, setup, metaDevs, acqBegan, ip, handler);
+							handleSlice(core, setup, metaDevs, acqBegan, tp, rown, ip, handler);
 
 							if(params.doProfiling())
 								prof.get("Output").stop();
@@ -477,7 +477,7 @@ public class ProgrammaticAcquisitor {
 				if(params.doProfiling())
 					prof.get("Output").start();
 
-				handler.finalizeStack(0);
+				handler.finalizeStack(tp, rown);
 
 				if(params.doProfiling())
 					prof.get("Output").stop();
@@ -562,8 +562,8 @@ public class ProgrammaticAcquisitor {
 	}
 
 	private static void handleSlice(CMMCore core, SPIMSetup setup,
-			SPIMDevice[] metaDevs, double start, ImageProcessor ip,
-			AcqOutputHandler handler) throws Exception {
+			SPIMDevice[] metaDevs, double start, int timepoint,
+			int row, ImageProcessor ip, AcqOutputHandler handler) throws Exception {
 /*
 		slice.tags.put("t", System.nanoTime() / 1e9 - start);
 
@@ -580,7 +580,7 @@ public class ProgrammaticAcquisitor {
 			}
 		}
 */
-		handler.processSlice(ip, setup.getXStage().getPosition(),
+		handler.processSlice(timepoint, row, ip, setup.getXStage().getPosition(),
 				setup.getYStage().getPosition(),
 				setup.getZStage().getPosition(),
 				setup.getAngle(),

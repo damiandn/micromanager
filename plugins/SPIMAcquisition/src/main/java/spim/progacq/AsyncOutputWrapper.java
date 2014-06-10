@@ -23,8 +23,10 @@ public class AsyncOutputWrapper implements AcqOutputHandler, UncaughtExceptionHa
 			EndStack,
 		}
 
-		public IPC(Type type, ImageProcessor ip, double x, double y, double z, double t, double dt) {
+		public IPC(Type type, int tp, int view, ImageProcessor ip, double x, double y, double z, double t, double dt) {
 			this.type = type;
+			this.tp = tp;
+			this.view = view;
 			this.ip = ip;
 			this.x = x;
 			this.y = y;
@@ -33,6 +35,7 @@ public class AsyncOutputWrapper implements AcqOutputHandler, UncaughtExceptionHa
 			this.dt = dt;
 		}
 
+		public int tp, view;
 		public ImageProcessor ip;
 		public double x, y, z, t, dt;
 		public Type type;
@@ -148,11 +151,11 @@ public class AsyncOutputWrapper implements AcqOutputHandler, UncaughtExceptionHa
 	}
 
 	@Override
-	public void beginStack(int axis) throws Exception {
+	public void beginStack(int timepoint, int view) throws Exception {
 		if(rethrow != null)
 			throw rethrow;
 
-		IPC store = new IPC(IPC.Type.StartStack, null, 0, 0, 0, 0, (double) axis);
+		IPC store = new IPC(IPC.Type.StartStack, timepoint, view, null, 0, 0, 0, 0, (double) axis);
 		if(!queue.offer(store)) {
 			handleNext();
 			queue.put(store);
@@ -160,12 +163,12 @@ public class AsyncOutputWrapper implements AcqOutputHandler, UncaughtExceptionHa
 	}
 
 	@Override
-	public void processSlice(ImageProcessor ip, double X, double Y, double Z,
+	public void processSlice(int tp, int view, ImageProcessor ip, double X, double Y, double Z,
 			double theta, double deltaT) throws Exception {
 		if(rethrow != null)
 			throw rethrow;
 
-		IPC store = new IPC(IPC.Type.Slice, ip, X, Y, Z, theta, deltaT);
+		IPC store = new IPC(IPC.Type.Slice, tp, view, ip, X, Y, Z, theta, deltaT);
 		if(!queue.offer(store)) {
 			handleNext();
 			queue.put(store);
@@ -173,11 +176,11 @@ public class AsyncOutputWrapper implements AcqOutputHandler, UncaughtExceptionHa
 	}
 
 	@Override
-	public void finalizeStack(int depth) throws Exception {
+	public void finalizeStack(int timepoint, int view) throws Exception {
 		if(rethrow != null)
 			throw rethrow;
 
-		IPC store = new IPC(IPC.Type.EndStack, null, 0, 0, 0, 0, (double) depth);
+		IPC store = new IPC(IPC.Type.EndStack, tp, view, null, 0, 0, 0, 0, (double) depth);
 		if(!queue.offer(store)) {
 			handleNext();
 			queue.put(store);
@@ -226,13 +229,13 @@ public class AsyncOutputWrapper implements AcqOutputHandler, UncaughtExceptionHa
 				writing = true;
 				switch(write.type){
 				case StartStack:
-					handler.beginStack((int) write.dt);
+					handler.beginStack(write.tp, write.view);
 					break;
 				case Slice:
-					handler.processSlice(write.ip, write.x, write.y, write.z, write.t, write.dt);
+					handler.processSlice(write.tp, write.view, write.ip, write.x, write.y, write.z, write.t, write.dt);
 					break;
 				case EndStack:
-					handler.finalizeStack((int) write.dt);
+					handler.finalizeStack(write.tp, write.view);
 					break;
 				}
 				writing = false;

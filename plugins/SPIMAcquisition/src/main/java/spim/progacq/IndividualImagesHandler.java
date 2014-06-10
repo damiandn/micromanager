@@ -50,9 +50,9 @@ public class IndividualImagesHandler implements AcqOutputHandler {
 	}
 
 	@Override
-	public void processSlice(ImageProcessor ip, double X, double Y, double Z, double theta, double deltaT)
+	public void processSlice(int timepoint, int view, ImageProcessor ip, double X, double Y, double Z, double theta, double deltaT)
 			throws Exception {
-		String name = nameImage(X, Y, Z, theta, deltaT);
+		String name = nameImage(timepoint, view, X, Y, Z, theta, deltaT);
 		ImagePlus imp = new ImagePlus(name, ip);
 		
 		imp.setProperty("Info", X + "/" + Y + "/" + Z + ", " + theta + " @ " + deltaT + "s");
@@ -60,14 +60,15 @@ public class IndividualImagesHandler implements AcqOutputHandler {
 		IJ.save(imp, new File(outputDirectory, name).getAbsolutePath());
 	}
 
-	private String nameImage(double X, double Y, double Z, double T, double dT) {
-		String result = new String(namingScheme);
-
-		result = result.replace("$(X)", Double.toString(X));
-		result = result.replace("$(Y)", Double.toString(Y));
-		result = result.replace("$(Z)", Double.toString(Z));
-		result = result.replace("$(T)", Double.toString(T));
-		result = result.replace("$(dt)", Double.toString(dT));
+	private String nameImage(int timepoint, int view, double X, double Y, double Z, double T, double dT) {
+		String result = new String(namingScheme)
+			.replace("$(A)", Integer.toString(view))
+			.replace("$(TP)", Integer.toString(timepoint))
+			.replace("$(X)", Double.toString(X))
+			.replace("$(Y)", Double.toString(Y))
+			.replace("$(Z)", Double.toString(Z))
+			.replace("$(T)", Double.toString(T))
+			.replace("$(dt)", Double.toString(dT));
 
 		return result;
 	}
@@ -79,21 +80,21 @@ public class IndividualImagesHandler implements AcqOutputHandler {
 
 	@Override
 	public ImagePlus getImagePlus() throws Exception {
-		IJ.run("QuickPALM.Run_MyMacro", "Fast_VirtualStack_Opener.txt"); // TODO: Invoke the Open Virtual Stack process.
+		IJ.run("QuickPALM.Run_MyMacro", "Fast_VirtualStack_Opener.txt");
 
 		return IJ.getImage();
 	}
 
 
 	@Override
-	public void finalizeStack(int depth) throws Exception {
+	public void finalizeStack(int timepoint, int view) throws Exception {
 		// TODO Auto-generated method stub
 		
 	}
 
 
 	@Override
-	public void beginStack(int axis) throws Exception {
+	public void beginStack(int timepoint, int view) throws Exception {
 		// TODO Auto-generated method stub
 		
 	}
