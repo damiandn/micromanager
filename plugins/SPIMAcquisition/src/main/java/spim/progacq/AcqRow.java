@@ -84,7 +84,7 @@ public class AcqRow {
 
 		public int getSteps() {
 			if(continuous)
-				return -1;
+				return 999;
 
 			if(stepOrSpeed == 0)
 				return 1;

@@ -1764,8 +1764,7 @@ public class SPIMAcquisition implements MMPlugin, ItemListener, ActionListener {
 					}
 
 					AcqOutputHandler handler = new OMETIFFHandler(
-						mmc, output, null, null, null, "t",
-						acqRows, timeSeqs, timeStep
+						setup, output, acqRows, timeSeqs, timeStep
 					);
 					if(asyncCheckbox.isSelected())
 						handler = new AsyncOutputWrapper(handler, (ij.IJ.maxMemory() - ij.IJ.currentMemory())/(mmc.getImageWidth()*mmc.getImageHeight()*mmc.getBytesPerPixel()*2), asyncMonitorCheckbox.isSelected());

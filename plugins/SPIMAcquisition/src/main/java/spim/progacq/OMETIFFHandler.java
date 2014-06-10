@@ -1,101 +1,126 @@
 package spim.progacq;
 
 import java.io.File;
+import java.util.UUID;
 
+import ij.IJ;
 import ij.ImagePlus;
 import ij.process.ImageProcessor;
+
 import org.micromanager.utils.ReportingUtils;
 
 import loci.common.DataTools;
 import loci.common.services.ServiceFactory;
-
+import loci.formats.FormatTools;
 import loci.formats.IFormatWriter;
 import loci.formats.ImageWriter;
 import loci.formats.MetadataTools;
 import loci.formats.meta.IMetadata;
 import loci.formats.services.OMEXMLService;
 import mmcorej.CMMCore;
-
 import ome.xml.model.enums.DimensionOrder;
 import ome.xml.model.enums.PixelType;
 import ome.xml.model.primitives.NonNegativeInteger;
 import ome.xml.model.primitives.PositiveFloat;
 import ome.xml.model.primitives.PositiveInteger;
+import spim.setup.SPIMSetup;
+import spim.setup.SPIMSetup.SPIMDevice;
 
 public class OMETIFFHandler implements AcqOutputHandler {
 	private File outputDirectory;
 
 	private IMetadata meta;
-	private int imageCounter, sliceCounter;
 	private IFormatWriter writer;
 
 	private CMMCore core;
 	private int stacks, timesteps;
-	private AcqRow[] acqRows;
+	private int planeCounter;
 	private double deltat;
-	
-	public OMETIFFHandler(CMMCore iCore, File outDir, String xyDev,
-			String cDev, String zDev, String tDev, AcqRow[] acqRows,
+
+	public OMETIFFHandler(SPIMSetup setup, File outDir, AcqRow[] acqRows,
 			int iTimeSteps, double iDeltaT) {
 
 		if(outDir == null || !outDir.exists() || !outDir.isDirectory())
 			throw new IllegalArgumentException("Null path specified: " + outDir.toString());
 
-		imageCounter = -1;
-		sliceCounter = 0;
-
 		stacks = acqRows.length;
-		core = iCore;
+		core = setup.getCore();
 		timesteps = iTimeSteps;
 		deltat = iDeltaT;
 		outputDirectory = outDir;
-		this.acqRows = acqRows;
+
+		planeCounter = 0;
 
 		try {
 			meta = new ServiceFactory().getInstance(OMEXMLService.class).createOMEXMLMetadata();
 
 			meta.createRoot();
-
 			meta.setDatasetID(MetadataTools.createLSID("Dataset", 0), 0);
+			meta.setInstrumentID("OpenSPIM", 0);
 
-			for (int image = 0; image < stacks; ++image) {
-				meta.setImageID(MetadataTools.createLSID("Image", image), image);
+			for(SPIMDevice dev : acqRows[0].getDevices())
+			{
+				switch(dev)
+				{
+				case CAMERA1:
+					meta.setDetectorID(setup.getDevice(dev).getDeviceName(), 0, 0);
+					break;
+				case CAMERA2:
+					meta.setDetectorID(setup.getDevice(dev).getDeviceName(), 0, 1);
+					break;
+				case LASER1:
+					meta.setLaserID(setup.getDevice(dev).getDeviceName(), 0, 0);
+					break;
+				case LASER2:
+					meta.setLaserID(setup.getDevice(dev).getDeviceName(), 0, 1);
+					break;
+				case STAGE_THETA:
+				case STAGE_X:
+				case STAGE_Y:
+				case STAGE_Z:
+				case SYNCHRONIZER:
+					break;
+				default:
+					break;
+				}
+			}
 
-				AcqRow row = acqRows[image];
-				int depth = row.getDepth();
+			for (int t = 0; t < timesteps; ++t) {
+				for (int view = 0; view < stacks; ++view) {
+					AcqRow row = acqRows[view];
+					int depth = row.getDepth();
 
-				meta.setPixelsID(MetadataTools.createLSID("Pixels", 0), image);
-				meta.setPixelsDimensionOrder(DimensionOrder.XYCZT, image);
-				meta.setPixelsBinDataBigEndian(Boolean.FALSE, image, 0);
-				meta.setPixelsType(core.getImageBitDepth() == 8 ? PixelType.UINT8 : PixelType.UINT16, image);
-				meta.setChannelID(MetadataTools.createLSID("Channel", 0), image, 0);
-				meta.setChannelSamplesPerPixel(new PositiveInteger(1), image, 0);
+					int image = image(t, view);
 
-				for (int t = 0; t < timesteps; ++t) {
-					String fileName = makeFilename(image, t);
-					for(int z = 0; z < depth; ++z) {
-						int td = depth*t + z;
+					meta.setImageID(MetadataTools.createLSID("Image", view, t), image);
 
-						meta.setUUIDFileName(fileName, image, td);
-//						meta.setUUIDValue("urn:uuid:" + (String)UUID.nameUUIDFromBytes(fileName.getBytes()).toString(), image, td);
+					meta.setPixelsID(MetadataTools.createLSID("Pixels", 0), image);
+					meta.setPixelsBigEndian(Boolean.TRUE, image);
+					meta.setPixelsDimensionOrder(DimensionOrder.XYCZT, image);
+					meta.setPixelsType(PixelType.fromString(FormatTools.getPixelTypeString(FormatTools.pixelTypeFromBytes((int) core.getBytesPerPixel(), false, false))), image);
+					meta.setPixelsSizeX(new PositiveInteger((int) core.getImageWidth()), image);
+					meta.setPixelsSizeY(new PositiveInteger((int) core.getImageHeight()), image);
+					meta.setPixelsSizeZ(new PositiveInteger(depth), image);
+					meta.setPixelsSizeC(new PositiveInteger(1), image);
+					meta.setPixelsSizeT(new PositiveInteger(1), image);
+					meta.setPixelsPhysicalSizeX(new PositiveFloat(core.getPixelSizeUm()), image);
+					meta.setPixelsPhysicalSizeY(new PositiveFloat(core.getPixelSizeUm()), image);
+					meta.setPixelsPhysicalSizeZ(new PositiveFloat(Math.max(row.getZStepSize(), 0.1D)), image);
+					meta.setPixelsTimeIncrement(new Double(deltat), image);
+					meta.setPixelsSignificantBits(new PositiveInteger((int) core.getImageBitDepth()), image);
 
-						meta.setTiffDataPlaneCount(new NonNegativeInteger(1), image, td);
-						meta.setTiffDataFirstT(new NonNegativeInteger(t), image, td);
-						meta.setTiffDataFirstC(new NonNegativeInteger(0), image, td);
-						meta.setTiffDataFirstZ(new NonNegativeInteger(z), image, td);
-					};
-				};
+					meta.setChannelID(MetadataTools.createLSID("Channel", 0), image, 0);
+					meta.setChannelSamplesPerPixel(new PositiveInteger(1), image, 0);
 
-				meta.setPixelsSizeX(new PositiveInteger((int)core.getImageWidth()), image);
-				meta.setPixelsSizeY(new PositiveInteger((int)core.getImageHeight()), image);
-				meta.setPixelsSizeZ(new PositiveInteger(depth), image);
-				meta.setPixelsSizeC(new PositiveInteger(1), image);
-				meta.setPixelsSizeT(new PositiveInteger(timesteps), image);
+					meta.setTiffDataFirstC(new NonNegativeInteger(0), image, 0);
+					meta.setTiffDataFirstZ(new NonNegativeInteger(0), image, 0);
+					meta.setTiffDataFirstT(new NonNegativeInteger(t), image, 0);
+					meta.setTiffDataPlaneCount(new NonNegativeInteger(1), image, 0); // Needs to get updated later.
 
-				meta.setPixelsPhysicalSizeX(new PositiveFloat(core.getPixelSizeUm()), image);
-				meta.setPixelsPhysicalSizeY(new PositiveFloat(core.getPixelSizeUm()), image);
-				meta.setPixelsPhysicalSizeZ(new PositiveFloat(Math.max(row.getZStepSize(), 1.0D)), image);
-				meta.setPixelsTimeIncrement(new Double(deltat), image);
+					String fileName = makeFilename(view, t);
+					meta.setUUIDFileName(fileName, image, 0);
+					meta.setUUIDValue(UUID.randomUUID().toString(), view, 0);
+				}
 			}
 
 			writer = new ImageWriter().getWriter(makeFilename(0, 0));
@@ -106,21 +131,24 @@ public class OMETIFFHandler implements AcqOutputHandler {
 			writer.setValidBitsPerPixel((int) core.getImageBitDepth());
 			writer.setCompression("Uncompressed");
 		} catch(Throwable t) {
-			t.printStackTrace();
+			IJ.handleException(t);
 			throw new IllegalArgumentException(t);
 		}
 	}
 
-	private static String makeFilename(int angleIndex, int timepoint) {
-		return String.format("spim_TL%02d_Angle%01d.ome.tiff", (timepoint + 1), angleIndex);
+	private static String makeFilename(int view, int timepoint) {
+		return String.format("spim_TL%02d_Angle%01d.ome.tiff", (timepoint + 1), view);
 	}
 
-	private void openWriter(int angleIndex, int timepoint) throws Exception {
-		writer.changeOutputFile(new File(outputDirectory, meta.getUUIDFileName(angleIndex, acqRows[angleIndex].getDepth()*timepoint)).getAbsolutePath());
-		writer.setSeries(angleIndex);
-		meta.setUUID(meta.getUUIDValue(angleIndex, acqRows[angleIndex].getDepth()*timepoint));
+	private int image(int timepoint, int view) {
+		return timepoint*stacks + view;
+	}
 
-		sliceCounter = 0;
+	private void openWriter(int view, int timepoint) throws Exception {
+		int image = image(timepoint, view);
+		writer.changeOutputFile(new File(outputDirectory, meta.getUUIDFileName(image, 0)).getAbsolutePath());
+		writer.setSeries(image);
+		meta.setUUID(meta.getUUIDValue(image, 0));
 	}
 
 	@Override
@@ -133,8 +161,8 @@ public class OMETIFFHandler implements AcqOutputHandler {
 	public void beginStack(int timepoint, int view) throws Exception {
 		ReportingUtils.logMessage("Beginning stack for timepoint " + timepoint + ", view " + view);
 
-		if(++imageCounter < stacks * timesteps)
-			openWriter(imageCounter % stacks, imageCounter / stacks);
+		openWriter(view, timepoint);
+		planeCounter = 0;
 	}
 
 	private int doubleAnnotations = 0;
@@ -151,22 +179,34 @@ public class OMETIFFHandler implements AcqOutputHandler {
 	@Override
 	public void processSlice(int timepoint, int view, ImageProcessor ip, double X, double Y, double Z, double theta, double deltaT)
 			throws Exception {
-		long bitDepth = core.getImageBitDepth();
-		byte[] data = bitDepth == 8 ?
-			(byte[])ip.getPixels() :
-			DataTools.shortsToBytes((short[])ip.getPixels(), true);
+		byte[] data = null;
 
-		int image = imageCounter % stacks;
-		int timePoint = imageCounter / stacks;
-		int plane = timePoint*acqRows[image].getDepth() + sliceCounter;
+		switch(ip.getBitDepth()) {
+		case 8:
+			data = (byte[])ip.getPixels();
+			break;
+		case 16:
+			data = DataTools.shortsToBytes((short[])ip.getPixels(), true);
+			break;
+		case 32:
+			data = (ip instanceof ij.process.FloatProcessor) ? DataTools.floatsToBytes((float[])ip.getPixels(), true) : DataTools.intsToBytes((int[])ip.getPixels(), true);
+			break;
+		case 64:
+			data = DataTools.longsToBytes((long[])ip.getPixels(), true);
+			break;
+		}
+
+		int image = image(timepoint, view);
+		int plane = planeCounter;
 
 		meta.setPlanePositionX(X, image, plane);
 		meta.setPlanePositionY(Y, image, plane);
 		meta.setPlanePositionZ(Z, image, plane);
-		meta.setPlaneTheZ(new NonNegativeInteger(sliceCounter), image, plane);
-		meta.setPlaneTheT(new NonNegativeInteger(timePoint), image, plane);
 		meta.setPlaneDeltaT(deltaT, image, plane);
 
+		meta.setPlaneTheC(new NonNegativeInteger(0), image, plane);
+		meta.setPlaneTheZ(new NonNegativeInteger(planeCounter), image, plane);
+		meta.setPlaneTheT(new NonNegativeInteger(timepoint), image, plane);
 
 		storeDouble(image, plane, 0, "Theta", theta);
 
@@ -179,20 +219,20 @@ public class OMETIFFHandler implements AcqOutputHandler {
 			throw new Exception("Error writing OME-TIFF.", ioe);
 		}
 
-		++sliceCounter;
+		++planeCounter;
 	}
 
 	@Override
 	public void finalizeStack(int timepoint, int view) throws Exception {
 		ReportingUtils.logMessage("Finished stack of view " + view + " at timepoint " + timepoint);
+
+		meta.setPixelsSizeZ(new PositiveInteger(planeCounter), image(timepoint, view));
 	}
 
 	@Override
 	public void finalizeAcquisition() throws Exception {
 		if(writer != null)
 			writer.close();
-
-		imageCounter = 0;
 
 		writer = null;
 	}
