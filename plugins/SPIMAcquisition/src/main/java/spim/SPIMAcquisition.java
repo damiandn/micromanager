@@ -7,6 +7,7 @@ import ij.gui.GenericDialog;
 import ij.gui.ImageWindow;
 import ij.process.ImageProcessor;
 
+import java.awt.CardLayout;
 import java.awt.Component;
 import java.awt.Container;
 import java.awt.Dimension;
@@ -79,7 +80,6 @@ import spim.setup.DeviceManager;
 import spim.setup.SPIMSetup;
 import spim.setup.SPIMSetup.SPIMDevice;
 import spim.setup.Stage;
-
 import spim.progacq.AcqOutputHandler;
 import spim.progacq.AcqParams;
 import spim.progacq.AcqRow;
@@ -632,6 +632,9 @@ public class SPIMAcquisition implements MMPlugin, ItemListener, ActionListener {
 		final JSpinner acqSliceStep = new JSpinner(new SpinnerNumberModel(zstep, zstep, zstep*100, zstep));
 		acqSliceStep.setMaximumSize(acqSliceStep.getPreferredSize());
 
+		final JComboBox acqSliceVel = new JComboBox((setup.getZStage() != null ? setup.getZStage().getAllowedVelocities() : new LinkedList<Double>()).toArray());
+		acqSliceVel.setMaximumSize(acqSliceVel.getPreferredSize());
+
 		acqMakeSlices.addActionListener(new ActionListener() {
 			@Override
 			public void actionPerformed(ActionEvent ae) {
@@ -648,17 +651,32 @@ public class SPIMAcquisition implements MMPlugin, ItemListener, ActionListener {
 					double theta = setup.getAngle();
 
 					double range = (Double)acqSliceRange.getValue();
-					double step = (Double)acqSliceStep.getValue();
 
-					model.insertRow(idx,
-						new AcqRow(
-							model.getColumns(),
-							(Double) xyz.getX(),
-							(Double) xyz.getY(),
-							(Double) theta,
-							String.format("%.3f:%.3f:%.3f", xyz.getZ(), step, (xyz.getZ() + range))
-						)
-					);
+					if(!continuousCheckbox.isSelected()) {
+						double step = (Double)acqSliceStep.getValue();
+
+						model.insertRow(idx,
+							new AcqRow(
+								model.getColumns(),
+								(Double) xyz.getX(),
+								(Double) xyz.getY(),
+								(Double) theta,
+								String.format("%.3f:%.3f:%.3f", xyz.getZ(), step, (xyz.getZ() + range))
+							)
+						);
+					} else {
+						double speed = (Double)acqSliceVel.getSelectedItem();
+
+						model.insertRow(idx,
+							new AcqRow(
+								model.getColumns(),
+								(Double) xyz.getX(),
+								(Double) xyz.getY(),
+								(Double) theta,
+								String.format("%.3f-%.3f@%.3f", xyz.getZ(), (xyz.getZ() + range), speed)
+							)
+						);
+					}
 				} catch(Throwable t) {
 					JOptionPane.showMessageDialog(acqPositionsTable, "Couldn't create stack: " + t.getMessage());
 
@@ -667,11 +685,16 @@ public class SPIMAcquisition implements MMPlugin, ItemListener, ActionListener {
 			}
 		});
 
+		final CardLayout velstepcards = new CardLayout();
+
+		final JPanel velstep = new JPanel(velstepcards);
+		velstep.add("Steps", LayoutUtils.horizPanel(acqSliceStep, new JLabel(" \u03BCm")));
+		velstep.add("Velocity", LayoutUtils.horizPanel(acqSliceVel, new JLabel(" \u03BCm/s")));
+
 		JPanel sliceOpts = (JPanel)LayoutUtils.horizPanel(
 			acqSliceRange,
 			new JLabel(" @ "),
-			acqSliceStep,
-			new JLabel(" \u03BCm")
+			velstep
 		);
 		sliceOpts.setAlignmentX(Component.LEFT_ALIGNMENT);
 
@@ -866,8 +889,7 @@ public class SPIMAcquisition implements MMPlugin, ItemListener, ActionListener {
 		continuousCheckbox.addItemListener(new ItemListener() {
 			@Override
 			public void itemStateChanged(ItemEvent arg0) {
-				acqSaveDir.setEnabled(!continuousCheckbox.isSelected());
-				pickDirBtn.setEnabled(!continuousCheckbox.isSelected());
+				velstepcards.show(velstep, continuousCheckbox.isSelected() ? "Velocity" : "Steps");
 			}
 		});
 
@@ -1737,7 +1759,7 @@ public class SPIMAcquisition implements MMPlugin, ItemListener, ActionListener {
 				params.setContinuous(continuousCheckbox.isSelected());
 
 				final File output;
-				if(!continuousCheckbox.isSelected() && !"".equals(acqSaveDir.getText())) {
+				if(!"".equals(acqSaveDir.getText())) {
 					output = new File(acqSaveDir.getText());
 
 					if(!output.isDirectory()) {
