@@ -95,7 +95,7 @@ public class OMETIFFHandler implements AcqOutputHandler {
 					meta.setImageID(MetadataTools.createLSID("Image", view, t), image);
 
 					meta.setPixelsID(MetadataTools.createLSID("Pixels", 0), image);
-					meta.setPixelsBigEndian(Boolean.TRUE, image);
+					meta.setPixelsBinDataBigEndian(Boolean.TRUE, image, 0);
 					meta.setPixelsDimensionOrder(DimensionOrder.XYCZT, image);
 					meta.setPixelsType(PixelType.fromString(FormatTools.getPixelTypeString(FormatTools.pixelTypeFromBytes((int) core.getBytesPerPixel(), false, false))), image);
 					meta.setPixelsSizeX(new PositiveInteger((int) core.getImageWidth()), image);
