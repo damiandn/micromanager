@@ -1109,14 +1109,14 @@ public class SPIMAcquisition implements MMPlugin, ItemListener, ActionListener {
 		"B", "kB", "MB", "GB", "TB", "PB" // If we get any further than this...
 	};
 
-	private static String describeSize(long size) {
+	private static String describeSize(long bytes) {
 		int factor = 0;
-		while(size > 1024 && factor < units.length - 1) {
-			size /= 1024;
+		while(bytes > 1024*1024 && factor < units.length - 2) {
+			bytes /= 1024;
 			++factor;
 		};
 
-		return size + " " + units[factor];
+		return String.format("%.2f %s", bytes/1024.0, units[++factor]);
 	}
 
 	private void updateSizeEstimate() {
