@@ -8,6 +8,8 @@ import java.lang.InterruptedException;
 import java.lang.Thread.UncaughtExceptionHandler;
 import java.nio.channels.ClosedByInterruptException;
 
+import org.json.JSONObject;
+import org.micromanager.utils.ImageUtils;
 import org.micromanager.utils.ReportingUtils;
 
 import ij.IJ;
@@ -33,44 +35,37 @@ public class AsyncOutputWrapper implements AcqOutputHandler, UncaughtExceptionHa
 			if(kind != Type.START_STACK && kind != Type.END_STACK)
 				throw new IllegalArgumentException("Slice type specified but no slice information given.");
 
-			this.tp = tp;
-			this.view = view;
 			this.type = kind;
-			x = y = z = t = dt = 0;
-			ip = null;
+
+			this.tp = tp;
+			this.view = view;
+			img = null;
 			path = null;
+			tags = null;
 		}
 
-		public IPC(ImageProcessor ip, int tp, int view, double x, double y, double z, double t, double dt) {
-			this.tp = tp;
-			this.view = view;
+		public IPC(TaggedImage img) {
 			this.type = Type.MEMORY;
-			this.ip = ip;
+
+			tp = view = 0;
+			this.img = img;
 			this.path = null;
-			this.x = x;
-			this.y = y;
-			this.z = z;
-			this.t = t;
-			this.dt = dt;
+			this.tags = img.tags;
 		}
 
-		public IPC(File path, int tp, int view, double x, double y, double z, double t, double dt) {
-			this.tp = tp;
-			this.view = view;
+		public IPC(File path, JSONObject tags) {
 			this.type = Type.DISK;
-			this.ip = null;
+
+			tp = view = 0;
+			this.img = null;
 			this.path = path;
-			this.x = x;
-			this.y = y;
-			this.z = z;
-			this.t = t;
-			this.dt = dt;
+			this.tags = tags;
 		}
 
 		public final int tp, view;
-		public final ImageProcessor ip;
+		public final TaggedImage img;
+		public final JSONObject tags;
 		public final File path;
-		public final double x, y, z, t, dt;
 		public final Type type;
 	}
 
@@ -241,8 +236,7 @@ public class AsyncOutputWrapper implements AcqOutputHandler, UncaughtExceptionHa
 	}
 
 	@Override
-	public void processSlice(int tp, int view, ImageProcessor ip, double X, double Y, double Z,
-			double theta, double deltaT) throws Exception {
+	public void processSlice(TaggedImage img) throws Exception {
 		if(rethrow != null)
 			throw rethrow;
 
@@ -252,15 +246,15 @@ public class AsyncOutputWrapper implements AcqOutputHandler, UncaughtExceptionHa
 			handleNext(true);
 
 		if(memPercent() < memQuota) {
-			store = new IPC(ip, tp, view, X, Y, Z, theta, deltaT);
+			store = new IPC(img);
 			++inMem;
 		} else {
 			File path = File.createTempFile("async_", ".tif", tempDir);
-			ImagePlus imp = new ImagePlus("", ip);
+			ImagePlus imp = new ImagePlus("", ImageUtils.makeProcessor(img));
 			ij.IJ.saveAsTiff(imp, path.getAbsolutePath());
 			imp.close();
 			path.deleteOnExit();
-			store = new IPC(path, tp, view, X, Y, Z, theta, deltaT);
+			store = new IPC(path, img.tags);
 			++onDisk;
 			usedBytes += path.length();
 		}
@@ -340,7 +334,7 @@ public class AsyncOutputWrapper implements AcqOutputHandler, UncaughtExceptionHa
 						break;
 					}
 					case MEMORY: {
-						handler.processSlice(write.tp, write.view, write.ip, write.x, write.y, write.z, write.t, write.dt);
+						handler.processSlice(write.img);
 						--inMem;
 						++freed;
 
@@ -348,7 +342,9 @@ public class AsyncOutputWrapper implements AcqOutputHandler, UncaughtExceptionHa
 					}
 					case DISK: {
 						ImagePlus imp = ij.IJ.openImage(write.path.getAbsolutePath());
-						handler.processSlice(write.tp, write.view, imp.getProcessor(), write.x, write.y, write.z, write.t, write.dt);
+						TaggedImage ti = ImageUtils.makeTaggedImage(imp.getProcessor());
+						ti.tags = write.tags;
+						handler.processSlice(ti);
 						imp.close();
 						usedBytes -= write.path.length();
 						if(!write.path.delete())

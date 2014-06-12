@@ -5,8 +5,9 @@ import java.util.UUID;
 
 import ij.IJ;
 import ij.ImagePlus;
-import ij.process.ImageProcessor;
 
+import org.micromanager.utils.ImageUtils;
+import org.micromanager.utils.MDUtils;
 import org.micromanager.utils.ReportingUtils;
 
 import loci.common.DataTools;
@@ -18,6 +19,7 @@ import loci.formats.MetadataTools;
 import loci.formats.meta.IMetadata;
 import loci.formats.services.OMEXMLService;
 import mmcorej.CMMCore;
+import mmcorej.TaggedImage;
 import ome.xml.model.enums.DimensionOrder;
 import ome.xml.model.enums.PixelType;
 import ome.xml.model.primitives.NonNegativeInteger;
@@ -177,38 +179,39 @@ public class OMETIFFHandler implements AcqOutputHandler {
 	}
 
 	@Override
-	public void processSlice(int timepoint, int view, ImageProcessor ip, double X, double Y, double Z, double theta, double deltaT)
-			throws Exception {
+	public void processSlice(TaggedImage img) throws Exception {
 		byte[] data = null;
 
-		switch(ip.getBitDepth()) {
-		case 8:
-			data = (byte[])ip.getPixels();
+		switch(MDUtils.getIJType(img.tags)) {
+		case ImagePlus.GRAY8:
+			data = ImageUtils.get8BitData(img.pix);
 			break;
-		case 16:
-			data = DataTools.shortsToBytes((short[])ip.getPixels(), true);
+		case ImagePlus.GRAY16:
+			data = DataTools.shortsToBytes(ImageUtils.get16BitData(img.pix), true);
 			break;
-		case 32:
-			data = (ip instanceof ij.process.FloatProcessor) ? DataTools.floatsToBytes((float[])ip.getPixels(), true) : DataTools.intsToBytes((int[])ip.getPixels(), true);
+		case ImagePlus.GRAY32:
+		case ImagePlus.COLOR_RGB:
+			data = DataTools.intsToBytes(ImageUtils.get32BitData(img.pix), true);
 			break;
-		case 64:
-			data = DataTools.longsToBytes((long[])ip.getPixels(), true);
-			break;
+		default:
+			throw new Exception("Mystifying image data format " + MDUtils.getIJType(img.tags));
 		}
 
+		int timepoint = MDUtils.getFrameIndex(img.tags);
+		int view = MDUtils.getPositionIndex(img.tags);
 		int image = image(timepoint, view);
 		int plane = planeCounter;
 
-		meta.setPlanePositionX(X, image, plane);
-		meta.setPlanePositionY(Y, image, plane);
-		meta.setPlanePositionZ(Z, image, plane);
-		meta.setPlaneDeltaT(deltaT, image, plane);
+		meta.setPlanePositionX(MDUtils.getXPositionUm(img.tags), image, plane);
+		meta.setPlanePositionY(MDUtils.getYPositionUm(img.tags), image, plane);
+		meta.setPlanePositionZ(MDUtils.getZPositionUm(img.tags), image, plane);
+		meta.setPlaneDeltaT(MDUtils.getElapsedTimeMs(img.tags), image, plane);
 
 		meta.setPlaneTheC(new NonNegativeInteger(0), image, plane);
 		meta.setPlaneTheZ(new NonNegativeInteger(planeCounter), image, plane);
 		meta.setPlaneTheT(new NonNegativeInteger(timepoint), image, plane);
 
-		storeDouble(image, plane, 0, "Theta", theta);
+		storeDouble(image, plane, 0, "Theta", img.tags.getDouble(ProgrammaticAcquisitor.THETA_POSITION_TAG));
 
 		try {
 			writer.saveBytes(plane, data);

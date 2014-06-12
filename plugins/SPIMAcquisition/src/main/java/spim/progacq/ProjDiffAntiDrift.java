@@ -18,7 +18,7 @@ import ij.process.ColorProcessor;
 import ij.process.FloatBlitter;
 import ij.process.FloatProcessor;
 import ij.process.ImageProcessor;
-
+import mmcorej.TaggedImage;
 import net.imglib2.algorithm.legacy.fft.PhaseCorrelation;
 import net.imglib2.algorithm.legacy.fft.PhaseCorrelationPeak;
 import net.imglib2.img.ImagePlusAdapter;
@@ -26,15 +26,14 @@ import net.imglib2.img.Img;
 import net.imglib2.type.numeric.real.FloatType;
 
 import org.apache.commons.math3.geometry.euclidean.threed.Vector3D;
+import org.micromanager.utils.ImageUtils;
 
 public class ProjDiffAntiDrift extends AntiDrift {
 	private static class Projections {
 		private FloatProcessor xy, xz, zy;
 
-		public void addXYSlice(ImageProcessor ip) {
-			if (!(ip instanceof FloatProcessor)) {
-				ip = (FloatProcessor)ip.convertToFloat();
-			}
+		public void addXYSlice(TaggedImage img) {
+			FloatProcessor ip = ImageUtils.makeProcessor(img).convertToFloatProcessor();
 
 			final int w = ip.getWidth();
 			final int h = ip.getHeight();
@@ -233,16 +232,6 @@ public class ProjDiffAntiDrift extends AntiDrift {
 			return result;
 		}
 
-		public static Projections get(final ImagePlus imp) {
-			final ImageStack stack = imp.getStack();
-			final Projections p = new Projections();
-
-			for (int i = 1; i <= stack.getSize(); i++)
-				p.addXYSlice(stack.getProcessor(i));
-
-			return p;
-		}
-
 		public Vector3D getCenter() {
 			return new Vector3D(xy.getWidth() / 2.0, xy.getHeight() / 2.0, xz.getHeight() / 2.0);
 		}
@@ -416,8 +405,8 @@ public class ProjDiffAntiDrift extends AntiDrift {
 	}
 
 	@Override
-	public void tallySlice(Vector3D center, ImageProcessor ip) {
-		latest.addXYSlice(ip);
+	public void tallySlice(Vector3D center, TaggedImage img) {
+		latest.addXYSlice(img);
 	}
 
 	@Override

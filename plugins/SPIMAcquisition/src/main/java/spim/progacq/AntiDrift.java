@@ -1,13 +1,13 @@
 package spim.progacq;
 
-import ij.process.ImageProcessor;
+import mmcorej.TaggedImage;
 
 import org.apache.commons.math3.geometry.euclidean.threed.Vector3D;
 
 public abstract class AntiDrift {
 	public abstract void startNewStack();
 
-	public abstract void tallySlice(Vector3D center, ImageProcessor ip);
+	public abstract void tallySlice(Vector3D center, TaggedImage ip);
 
 	public abstract void finishStack();
 

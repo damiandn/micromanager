@@ -1,7 +1,7 @@
 package spim.progacq;
 
+import mmcorej.TaggedImage;
 import ij.ImagePlus;
-import ij.process.ImageProcessor;
 
 public interface AcqOutputHandler {
 	/**
@@ -29,18 +29,11 @@ public interface AcqOutputHandler {
 	 * Handle the next slice as output by the acquisition code. What this means
 	 * obviously depends largely on implementation.
 	 * 
-	 * @param timepoint Current time index
-	 * @param view Current view index
-	 * @param ip an ImageProcessor holding the pixels
-	 * @param X the X coordinate at which the image was acquired
-	 * @param Y the X coordinate at which the image was acquired
-	 * @param Z the X coordinate at which the image was acquired
-	 * @param theta the theta at which the image was acquired
-	 * @param deltaT the time since beginning, in seconds, at which the image was acquired
+	 * @param img A TaggedImage containing the image data, tagged as by MDUtils with the stage position, timepoint (frame), and view index (position index). See ProgrammaticAcquisitor.handleSlice.
 	 * 
 	 * @throws Exception
 	 */
-	public abstract void processSlice(int timepoint, int view, ImageProcessor ip, double X, double Y, double Z, double theta, double deltaT) throws Exception;
+	public abstract void processSlice(TaggedImage img) throws Exception;
 
 	/**
 	 * A stack has finished being acquired; react accordingly.

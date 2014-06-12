@@ -1,7 +1,6 @@
 package spim.progacq;
 
 import ij.ImagePlus;
-import ij.process.ImageProcessor;
 
 import java.io.PrintWriter;
 import java.io.StringWriter;
@@ -18,7 +17,6 @@ import mmcorej.TaggedImage;
 
 import org.apache.commons.math3.geometry.euclidean.threed.Vector3D;
 import org.micromanager.MMStudioMainFrame;
-import org.micromanager.utils.ImageUtils;
 import org.micromanager.utils.MDUtils;
 import org.micromanager.utils.ReportingUtils;
 
@@ -28,6 +26,8 @@ import spim.setup.Stage;
 import spim.progacq.AcqRow.DeviceValueSet;
 
 public class ProgrammaticAcquisitor {
+	public static final String THETA_POSITION_TAG = "ThetaPositionDeg";
+
 	public static class Profiler {
 		private Map<String, Profiler> children;
 		private String name;
@@ -334,7 +334,7 @@ public class ProgrammaticAcquisitor {
 										continue;
 
 									TaggedImage ti = core.popNextTaggedImage();
-									handleSlice(core, setup, metaDevs, acqBegan, tp, rown, ImageUtils.makeProcessor(ti), handler);
+									handleSlice(row, setup, metaDevs, acqBegan, tp, rown, ti, handler);
 
 									if(params.isUpdateLive())
 										updateLiveImage(frame, ti);
@@ -411,11 +411,10 @@ public class ProgrammaticAcquisitor {
 
 					if(!params.isContinuous()) {
 						TaggedImage ti = snapImage(setup, !params.isIllumFullStack());
-						ImageProcessor ip = ImageUtils.makeProcessor(ti);
 
-						handleSlice(core, setup, metaDevs, acqBegan, tp, rown, ip, handler);
+						handleSlice(row, setup, metaDevs, acqBegan, tp, rown, ti, handler);
 						if(ad != null)
-							tallyAntiDriftSlice(core, setup, row, ad, ip);
+							tallyAntiDriftSlice(core, setup, row, ad, ti);
 						if(params.isUpdateLive())
 							updateLiveImage(frame, ti);
 					};
@@ -450,14 +449,13 @@ public class ProgrammaticAcquisitor {
 							if(params.doProfiling())
 								prof.get("Output").start();
 
-							ImageProcessor ip = ImageUtils.makeProcessor(ti);
-							handleSlice(core, setup, metaDevs, acqBegan, tp, rown, ip, handler);
+							handleSlice(row, setup, metaDevs, acqBegan, tp, rown, ti, handler);
 
 							if(params.doProfiling())
 								prof.get("Output").stop();
 
 							if(ad != null)
-								tallyAntiDriftSlice(core, setup, row, ad, ip);
+								tallyAntiDriftSlice(core, setup, row, ad, ti);
 							if(params.isUpdateLive())
 								updateLiveImage(frame, ti);
 						}
@@ -569,13 +567,13 @@ public class ProgrammaticAcquisitor {
 		return handler.getImagePlus();
 	}
 
-	private static void tallyAntiDriftSlice(CMMCore core, SPIMSetup setup, AcqRow row, AntiDrift ad, ImageProcessor ip) throws Exception {
-		ad.tallySlice(new Vector3D(0,0,setup.getZStage().getPosition()-row.getZStartPosition()), ip);
+	private static void tallyAntiDriftSlice(CMMCore core, SPIMSetup setup, AcqRow row, AntiDrift ad, TaggedImage ti) throws Exception {
+		ad.tallySlice(new Vector3D(0,0,setup.getZStage().getPosition()-row.getZStartPosition()), ti);
 	}
 
-	private static void handleSlice(CMMCore core, SPIMSetup setup,
+	private static void handleSlice(AcqRow row, SPIMSetup setup,
 			SPIMDevice[] metaDevs, double start, int timepoint,
-			int row, ImageProcessor ip, AcqOutputHandler handler) throws Exception {
+			int rownum, TaggedImage img, AcqOutputHandler handler) throws Exception {
 /*
 		slice.tags.put("t", System.nanoTime() / 1e9 - start);
 
@@ -592,10 +590,16 @@ public class ProgrammaticAcquisitor {
 			}
 		}
 */
-		handler.processSlice(timepoint, row, ip, setup.getXStage().getPosition(),
-				setup.getYStage().getPosition(),
-				setup.getZStage().getPosition(),
-				setup.getAngle(),
-				System.nanoTime() / 1e9 - start);
+		MDUtils.setElapsedTimeMs(img.tags, 1e3 * (System.nanoTime() / 1e9 - start));
+		MDUtils.setFrameIndex(img.tags, timepoint);
+		MDUtils.setPositionIndex(img.tags, rownum);
+
+		Vector3D pos = setup.getPosition();
+		MDUtils.setXPositionUm(img.tags, pos.getX());
+		MDUtils.setYPositionUm(img.tags, pos.getY());
+		MDUtils.setZPositionUm(img.tags, pos.getZ());
+		img.tags.put(THETA_POSITION_TAG, setup.getAngle());
+
+		handler.processSlice(img);
 	}
 };

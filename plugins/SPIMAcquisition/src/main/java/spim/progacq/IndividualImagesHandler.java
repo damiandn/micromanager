@@ -1,10 +1,17 @@
 package spim.progacq;
 
 import java.io.File;
+import java.util.Iterator;
+
+import mmcorej.TaggedImage;
+
+import org.json.JSONException;
+import org.json.JSONObject;
+import org.micromanager.utils.ImageUtils;
+import org.micromanager.utils.MDUtils;
 
 import ij.IJ;
 import ij.ImagePlus;
-import ij.process.ImageProcessor;
 
 public class IndividualImagesHandler implements AcqOutputHandler {
 	private File outputDirectory;
@@ -40,35 +47,40 @@ public class IndividualImagesHandler implements AcqOutputHandler {
 		return nameScheme;
 	}
 
-
 	public IndividualImagesHandler(File directory, String scheme) {
 		outputDirectory = directory;
 		if(!outputDirectory.exists() || !outputDirectory.isDirectory())
 			throw new IllegalArgumentException("Invalid path or not a directory: " + directory.getAbsolutePath());
-	
+
 		namingScheme = scheme;
 	}
 
 	@Override
-	public void processSlice(int timepoint, int view, ImageProcessor ip, double X, double Y, double Z, double theta, double deltaT)
-			throws Exception {
-		String name = nameImage(timepoint, view, X, Y, Z, theta, deltaT);
-		ImagePlus imp = new ImagePlus(name, ip);
-		
-		imp.setProperty("Info", X + "/" + Y + "/" + Z + ", " + theta + " @ " + deltaT + "s");
-		
+	public void processSlice(TaggedImage img) throws Exception {
+		String name = nameImage(img.tags);
+
+		ImagePlus imp = new ImagePlus(name, ImageUtils.makeProcessor(img));
+		imp.setProperty("Info", img.tags.toString(1));
+
 		IJ.save(imp, new File(outputDirectory, name).getAbsolutePath());
 	}
 
-	private String nameImage(int timepoint, int view, double X, double Y, double Z, double T, double dT) {
-		String result = new String(namingScheme)
-			.replace("$(A)", Integer.toString(view))
-			.replace("$(TP)", Integer.toString(timepoint))
-			.replace("$(X)", Double.toString(X))
-			.replace("$(Y)", Double.toString(Y))
-			.replace("$(Z)", Double.toString(Z))
-			.replace("$(T)", Double.toString(T))
-			.replace("$(dt)", Double.toString(dT));
+	private String nameImage(JSONObject tags) throws JSONException {
+		String result = namingScheme
+			.replace("$(TP)", Integer.toString(MDUtils.getFrameIndex(tags)))
+			.replace("$(A)", Integer.toString(MDUtils.getPositionIndex(tags)))
+			.replace("$(X)", Double.toString(MDUtils.getXPositionUm(tags)))
+			.replace("$(Y)", Double.toString(MDUtils.getYPositionUm(tags)))
+			.replace("$(Z)", Double.toString(MDUtils.getZPositionUm(tags)))
+			.replace("$(T)", Double.toString(tags.getDouble(ProgrammaticAcquisitor.THETA_POSITION_TAG)))
+			.replace("$(dt)", Double.toString(MDUtils.getElapsedTimeMs(tags)));
+
+		Iterator<String> keys = tags.keys();
+		while(keys.hasNext())
+		{
+			String key = keys.next();
+			result = result.replace("${" + key + "}", tags.optString(key));
+		}
 
 		return result;
 	}
@@ -85,13 +97,11 @@ public class IndividualImagesHandler implements AcqOutputHandler {
 		return IJ.getImage();
 	}
 
-
 	@Override
 	public void finalizeStack(int timepoint, int view) throws Exception {
 		// TODO Auto-generated method stub
 		
 	}
-
 
 	@Override
 	public void beginStack(int timepoint, int view) throws Exception {

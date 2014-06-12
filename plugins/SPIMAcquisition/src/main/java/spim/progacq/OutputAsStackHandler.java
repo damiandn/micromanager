@@ -1,30 +1,42 @@
 package spim.progacq;
 
+import java.util.LinkedList;
+import java.util.List;
+
+import mmcorej.TaggedImage;
+
+import org.json.JSONObject;
+import org.micromanager.utils.ImageUtils;
+import org.micromanager.utils.MDUtils;
+
 import ij.ImagePlus;
 import ij.ImageStack;
-import ij.process.ImageProcessor;
 
 public class OutputAsStackHandler implements AcqOutputHandler {
 	private ImageStack stack;
 	private ImagePlus img;
+	private String accumulatedTags;
 
 	public OutputAsStackHandler() {
 		stack = null;
 		img = null;
+		accumulatedTags = "";
 	}
 
 	@Override
-	public void processSlice(int timepoint, int view, ImageProcessor ip, double X, double Y, double Z, double theta, double deltaT)
+	public void processSlice(TaggedImage img)
 			throws Exception {
 		if(stack == null)
-			stack = new ImageStack(ip.getWidth(), ip.getHeight());
+			stack = new ImageStack(MDUtils.getWidth(img.tags), MDUtils.getHeight(img.tags));
 
-		stack.addSlice("t=" + deltaT, ip);
+		stack.addSlice("t=" + MDUtils.getElapsedTimeMs(img.tags), ImageUtils.makeProcessor(img));
+		accumulatedTags += img.tags.toString(1) + ",\n";
 	}
 
 	@Override
 	public void finalizeAcquisition() throws Exception {
 		img = new ImagePlus("SimpleOutput", stack);
+		img.setProperty("Info", accumulatedTags);
 	}
 
 	@Override
