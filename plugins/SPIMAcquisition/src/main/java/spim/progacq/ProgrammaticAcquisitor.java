@@ -219,16 +219,11 @@ public class ProgrammaticAcquisitor {
 		}
 	}
 
-	private static ImagePlus cleanAbort(AcqParams p, boolean live, boolean as, Thread ct) {
+	private static ImagePlus cleanAbort(AcqParams p, boolean live, boolean as) {
 		p.getCore().setAutoShutter(as);
 		p.getProgressListener().reportProgress(p.getTimeSeqCount() - 1, p.getRows().length - 1, 100.0D);
 
 		try {
-			if(ct != null && ct.isAlive()) {
-				ct.interrupt();
-				ct.join();
-			}
-
 			// TEMPORARY: Don't re-enable live mode. This keeps our laser off.
 //			MMStudioMainFrame.getInstance().enableLiveMode(live);
 
@@ -282,7 +277,8 @@ public class ProgrammaticAcquisitor {
 		if(params.doProfiling())
 			prof.get("Setup").start();
 
-		final CMMCore core = params.getCore();
+		final SPIMSetup setup = params.getSetup();
+		final CMMCore core = setup.getCore();
 
 		final MMStudioMainFrame frame = MMStudioMainFrame.getInstance();
 		boolean liveOn = frame.isLiveModeOn();
@@ -293,8 +289,6 @@ public class ProgrammaticAcquisitor {
 		core.setAutoShutter(false);
 
 		final SPIMDevice[] metaDevs = params.getMetaDevices();
-
-		final SPIMSetup setup = params.getSetup();
 
 		final AcqOutputHandler handler = params.getOutputHandler();
 
@@ -309,61 +303,12 @@ public class ProgrammaticAcquisitor {
 		if(params.doProfiling())
 			prof.get("Setup").stop();
 
-		Thread continuousThread = null;
-
 		for(int timeSeq = 0; timeSeq < params.getTimeSeqCount(); ++timeSeq) {
 			int step = 0;
 
 			for(final AcqRow row : params.getRows()) {
 				final int tp = timeSeq;
 				final int rown = step;
-
-				if (params.isContinuous()) {
-					continuousThread = new Thread() {
-						private Throwable lastExc;
-
-						@Override
-						public void run() {
-							try {
-								if(setup.getLaser() != null)
-									setup.getLaser().setPoweredOn(true);
-
-								core.clearCircularBuffer();
-								core.startContinuousSequenceAcquisition(core.getExposure());
-
-								while (!Thread.interrupted()) {
-									if (core.getRemainingImageCount() == 0)
-										continue;
-
-									TaggedImage ti = core.popNextTaggedImage();
-									handleSlice(row, setup, metaDevs, acqBegan, tp, rown, ti, handler);
-
-									if(params.isUpdateLive())
-										updateLiveImage(frame, ti);
-								}
-
-								core.stopSequenceAcquisition();
-
-								if(setup.getLaser() != null)
-									setup.getLaser().setPoweredOn(false);
-							} catch (Throwable e) {
-								lastExc = e;
-							}
-						}
-
-						@Override
-						public String toString() {
-							if (lastExc == null) {
-								return super.toString();
-							} else {
-								StringWriter trace = new StringWriter();
-								lastExc.printStackTrace(new PrintWriter(trace));
-
-								return trace.toString();
-							}
-						}
-					};
-				}
 
 				AntiDrift ad = null;
 				if(row.getZContinuous() != true && params.isAntiDriftOn()) {
@@ -399,12 +344,6 @@ public class ProgrammaticAcquisitor {
 
 				handler.beginStack(tp, rown);
 
-				if(continuousThread != null)
-				{
-					continuousThread.setPriority(Thread.MAX_PRIORITY);
-					continuousThread.start();
-				}
-
 				if(params.doProfiling())
 					prof.get("Output").stop();
 
@@ -412,7 +351,7 @@ public class ProgrammaticAcquisitor {
 					if(!params.isContinuous()) {
 						TaggedImage ti = snapImage(setup, !params.isIllumFullStack());
 
-						handleSlice(row, setup, metaDevs, acqBegan, tp, rown, ti, handler);
+						handleSlice(row, setup, metaDevs, acqBegan, tp, rown, ti, handler, true);
 						if(ad != null)
 							tallyAntiDriftSlice(core, setup, row, ad, ti);
 						if(params.isUpdateLive())
@@ -422,6 +361,8 @@ public class ProgrammaticAcquisitor {
 					double[] positions = row.getValueSet(SPIMDevice.STAGE_Z).values();
 
 					for(int slice = 0; slice < positions.length; ++slice) {
+						if(Thread.currentThread().isInterrupted())
+							return cleanAbort(params, liveOn, autoShutter);
 
 						if(params.doProfiling())
 							prof.get("Movement").start();
@@ -432,7 +373,7 @@ public class ProgrammaticAcquisitor {
 						try {
 							Thread.sleep(params.getSettleDelay());
 						} catch(InterruptedException ie) {
-							return cleanAbort(params, liveOn, autoShutter, continuousThread);
+							return cleanAbort(params, liveOn, autoShutter);
 						}
 
 						if(params.doProfiling())
@@ -443,6 +384,7 @@ public class ProgrammaticAcquisitor {
 								prof.get("Acquisition").start();
 
 							TaggedImage ti = snapImage(setup, !params.isIllumFullStack());
+							MDUtils.setSliceIndex(ti.tags, slice);
 
 							if(params.doProfiling())
 								prof.get("Acquisition").stop();
@@ -450,7 +392,7 @@ public class ProgrammaticAcquisitor {
 							if(params.doProfiling())
 								prof.get("Output").start();
 
-							handleSlice(row, setup, metaDevs, acqBegan, tp, rown, ti, handler);
+							handleSlice(row, setup, metaDevs, acqBegan, tp, rown, ti, handler, true);
 
 							if(params.doProfiling())
 								prof.get("Output").stop();
@@ -475,27 +417,51 @@ public class ProgrammaticAcquisitor {
 					setup.getZStage().setPosition(row.getZStartPosition());
 					Double oldVel = setup.getZStage().getVelocity();
 
+					setup.getLaser().setPoweredOn(true);
+
+					core.startContinuousSequenceAcquisition(core.getExposure());
+					int sequence = 0;
+
 					setup.getZStage().setVelocity(row.getZVelocity());
 					setup.getZStage().setPosition(row.getZEndPosition());
 
-					while(setup.getZStage().isBusy())
-						Thread.sleep(10);
+					while(!Thread.currentThread().isInterrupted()) {
+						if(core.getRemainingImageCount() == 0) {
+							if(sequence < 0) {
+								break;
+							} else {
+								continue;
+							}
+						} else if(sequence >= 0) {
+							if(sequence % 5 <= 1 && !setup.getZStage().isBusy()) {
+								core.stopSequenceAcquisition();
+								sequence = -1;
+							} else {
+								++sequence;
+							}
+						}
+
+						if(params.doProfiling())
+							prof.get("Output").start();
+
+						TaggedImage ti = core.popNextTaggedImage();
+						handleSlice(row, setup, metaDevs, acqBegan, tp, rown, ti, handler, false);
+
+						if(params.doProfiling())
+							prof.get("Output").stop();
+
+						if(params.isUpdateLive())
+							updateLiveImage(frame, ti);
+					}
+
+					core.stopSequenceAcquisition();
 
 					setup.getZStage().setVelocity(oldVel);
+					setup.getLaser().setPoweredOn(false);
 				};
 
 				if(params.doProfiling())
 					prof.get("Output").start();
-
-				if(continuousThread != null) {
-					if(!continuousThread.isAlive()) {
-						cleanAbort(params, liveOn, autoShutter, continuousThread);
-						throw new Exception(continuousThread.toString());
-					}
-
-					continuousThread.interrupt();
-					continuousThread.join();
-				}
 
 				handler.finalizeStack(tp, rown);
 
@@ -511,8 +477,8 @@ public class ProgrammaticAcquisitor {
 					driftCompMap.put(row, ad);
 				}
 
-				if(Thread.interrupted())
-					return cleanAbort(params, liveOn, autoShutter, continuousThread);
+				if(Thread.currentThread().isInterrupted())
+					return cleanAbort(params, liveOn, autoShutter);
 
 				final Double progress = (double) (params.getRows().length * timeSeq + step + 1)
 						/ (params.getRows().length * params.getTimeSeqCount());
@@ -535,7 +501,7 @@ public class ProgrammaticAcquisitor {
 					try {
 						Thread.sleep((long)(wait * 1e3));
 					} catch(InterruptedException ie) {
-						return cleanAbort(params, liveOn, autoShutter, continuousThread);
+						return cleanAbort(params, liveOn, autoShutter);
 					}
 				else
 					core.logMessage("Behind schedule! (next seq in "
@@ -573,32 +539,25 @@ public class ProgrammaticAcquisitor {
 
 	private static void handleSlice(AcqRow row, SPIMSetup setup,
 			SPIMDevice[] metaDevs, double start, int timepoint,
-			int rownum, TaggedImage img, AcqOutputHandler handler) throws Exception {
-/*
-		slice.tags.put("t", System.nanoTime() / 1e9 - start);
+			int rownum, TaggedImage img, AcqOutputHandler handler,
+			boolean stageMetadataValid) throws Exception {
 
-		for(SPIMDevice devType : metaDevs) {
-			Device dev = setup.getDevice(devType);
-			try {
-				if(dev instanceof Stage) {
-					slice.tags.put(devType.getText(), ((Stage)dev).getPosition());
-				} else {
-					slice.tags.put(devType.getText(), "<unknown device type>");
-				}
-			} catch(Throwable t) {
-				slice.tags.put(devType.getText(), "<<<Exception: " + t.getMessage() + ">>>");
-			}
-		}
-*/
 		MDUtils.setElapsedTimeMs(img.tags, 1e3 * (System.nanoTime() / 1e9 - start));
 		MDUtils.setFrameIndex(img.tags, timepoint);
 		MDUtils.setPositionIndex(img.tags, rownum);
 
-		Vector3D pos = setup.getPosition();
-		MDUtils.setXPositionUm(img.tags, pos.getX());
-		MDUtils.setYPositionUm(img.tags, pos.getY());
-		MDUtils.setZPositionUm(img.tags, pos.getZ());
-		img.tags.put(THETA_POSITION_TAG, setup.getAngle());
+		if(stageMetadataValid) {
+			Vector3D pos = setup.getPosition();
+			MDUtils.setXPositionUm(img.tags, pos.getX());
+			MDUtils.setYPositionUm(img.tags, pos.getY());
+			MDUtils.setZPositionUm(img.tags, pos.getZ());
+			img.tags.put(THETA_POSITION_TAG, setup.getAngle());
+		} else {
+			MDUtils.setXPositionUm(img.tags, 0);
+			MDUtils.setYPositionUm(img.tags, 0);
+			MDUtils.setZPositionUm(img.tags, 0);
+			img.tags.put(THETA_POSITION_TAG, 0);
+		}
 
 		handler.processSlice(img);
 	}
