@@ -3,11 +3,13 @@
  */
 package spim.progacq;
 
+import java.text.ParseException;
 import java.util.Iterator;
 import java.util.Vector;
 
 import javax.swing.table.AbstractTableModel;
 
+import spim.progacq.AcqRow.ValueSet;
 import spim.setup.SPIMSetup.SPIMDevice;
 
 /**
@@ -85,11 +87,11 @@ public class StepTableModel extends AbstractTableModel implements
 		this.fireTableDataChanged();
 	}
 
-	public void insertRow(Object... values) {
+	public void insertRow(String... values) throws ParseException {
 		insertRow(data.size(), values);
 	}
 	
-	public void insertRow(int index, Object... values) {
+	public void insertRow(int index, String... values) throws ParseException {
 		// TODO: Handle this more gracefully? Fail silently? Chop?
 		if (values.length != devices.length)
 			throw new Error("Wrong colum count, silly!");
@@ -127,6 +129,6 @@ public class StepTableModel extends AbstractTableModel implements
 
 	@Override
 	public void setValueAt(Object aValue, int rowIndex, int columnIndex) {
-		data.get(rowIndex).setValueSet(devices[columnIndex], aValue.toString());
+		throw new UnsupportedOperationException();
 	}
 };

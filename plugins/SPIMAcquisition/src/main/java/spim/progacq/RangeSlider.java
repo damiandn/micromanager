@@ -107,8 +107,8 @@ public class RangeSlider extends JPanel implements ChangeListener, KeyListener {
 
 	public double[] getRange() {
 		return new double[] { Double.parseDouble(min.getText()),
-				Double.parseDouble(step.getText()),
-				Double.parseDouble(max.getText()) };
+				Double.parseDouble(max.getText()),
+				Double.parseDouble(step.getText()) };
 	}
 
 	private static Dictionary<Integer, JLabel> makeLabelTable(int min, int max,

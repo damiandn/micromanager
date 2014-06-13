@@ -23,7 +23,7 @@ import org.micromanager.utils.ReportingUtils;
 import spim.setup.SPIMSetup;
 import spim.setup.SPIMSetup.SPIMDevice;
 import spim.setup.Stage;
-import spim.progacq.AcqRow.DeviceValueSet;
+import spim.progacq.AcqRow.ValueSet;
 
 public class ProgrammaticAcquisitor {
 	public static final String THETA_POSITION_TAG = "ThetaPositionDeg";
@@ -188,10 +188,10 @@ public class ProgrammaticAcquisitor {
 		return finalRows;
 	}
 
-	private static void runDevicesAtRow(CMMCore core, SPIMSetup setup, AcqRow row, int step) throws Exception {
+	private static void runDevicesAtRow(SPIMSetup setup, AcqRow row) throws Exception {
 		for (SPIMDevice devType : row.getDevices()) {
 			spim.setup.Device dev = setup.getDevice(devType);
-			DeviceValueSet values = row.getValueSet(devType);
+			ValueSet values = row.getValueSet(devType);
 
 			if (dev instanceof Stage) // TODO: should this be different?
 				((Stage)dev).setPosition(values.getStartPosition());
@@ -199,9 +199,11 @@ public class ProgrammaticAcquisitor {
 				throw new Exception("Unknown device type for \"" + dev
 						+ "\"");
 		}
-		core.waitForSystem();
+
+		for (SPIMDevice devType : row.getDevices())
+			setup.getDevice(devType).waitFor();
 	}
-	
+
 	private static void updateLiveImage(MMStudioMainFrame f, TaggedImage ti)
 	{
 		try {
@@ -383,7 +385,8 @@ public class ProgrammaticAcquisitor {
 				if(params.doProfiling())
 					prof.get("Movement").start();
 
-				runDevicesAtRow(core, setup, row, step);
+				runDevicesAtRow(setup, row);
+				Thread.sleep(params.getSettleDelay());
 
 				if(params.doProfiling())
 					prof.get("Movement").stop();
@@ -406,9 +409,6 @@ public class ProgrammaticAcquisitor {
 					prof.get("Output").stop();
 
 				if(row.getZStartPosition() == row.getZEndPosition()) {
-					core.waitForImageSynchro();
-					Thread.sleep(params.getSettleDelay());
-
 					if(!params.isContinuous()) {
 						TaggedImage ti = snapImage(setup, !params.isIllumFullStack());
 
@@ -419,14 +419,15 @@ public class ProgrammaticAcquisitor {
 							updateLiveImage(frame, ti);
 					};
 				} else if (!row.getZContinuous()) {
-					double start = setup.getZStage().getPosition();
-					double end = start + row.getZEndPosition() - row.getZStartPosition();
-					for(double zStart = start; zStart <= end; zStart += row.getZStepSize()) {
+					double[] positions = row.getValueSet(SPIMDevice.STAGE_Z).values();
+
+					for(int slice = 0; slice < positions.length; ++slice) {
+
 						if(params.doProfiling())
 							prof.get("Movement").start();
 
-						setup.getZStage().setPosition(zStart);
-						core.waitForImageSynchro();
+						setup.getZStage().setPosition(positions[slice]);
+						setup.getZStage().waitFor();
 
 						try {
 							Thread.sleep(params.getSettleDelay());
@@ -460,8 +461,7 @@ public class ProgrammaticAcquisitor {
 								updateLiveImage(frame, ti);
 						}
 
-						double stackProg = Math.max(Math.min((zStart - start)/(end - start),1),0);
-
+						double stackProg = Math.max(Math.min((double) slice / (double) positions.length,1),0);
 						final Double progress = (double) (params.getRows().length * timeSeq + step + stackProg) / (params.getRows().length * params.getTimeSeqCount());
 
 						SwingUtilities.invokeLater(new Runnable() {

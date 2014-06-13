@@ -605,15 +605,7 @@ public class SPIMAcquisition implements MMPlugin, ItemListener, ActionListener {
 
 					Vector3D pos = setup.getPosition();
 
-					model.insertRow(idx,
-						new AcqRow(
-							model.getColumns(),
-							(Double) pos.getX(),
-							(Double) pos.getY(),
-							(Double) setup.getAngle(),
-							(Double) pos.getZ()
-						)
-					);
+					model.insertRow(idx, new AcqRow(pos.getX(), pos.getY(), pos.getZ(), setup.getAngle()));
 				} catch(Throwable t) {
 					JOptionPane.showMessageDialog(acqPositionsTable,
 							"Couldn't mark: " + t.getMessage());
@@ -652,32 +644,9 @@ public class SPIMAcquisition implements MMPlugin, ItemListener, ActionListener {
 					double theta = setup.getAngle();
 
 					double range = (Double)acqSliceRange.getValue();
+					boolean cont = continuousCheckbox.isSelected();
 
-					if(!continuousCheckbox.isSelected()) {
-						double step = (Double)acqSliceStep.getValue();
-
-						model.insertRow(idx,
-							new AcqRow(
-								model.getColumns(),
-								(Double) xyz.getX(),
-								(Double) xyz.getY(),
-								(Double) theta,
-								String.format("%.3f:%.3f:%.3f", xyz.getZ(), step, (xyz.getZ() + range))
-							)
-						);
-					} else {
-						double speed = (Double)acqSliceVel.getSelectedItem();
-
-						model.insertRow(idx,
-							new AcqRow(
-								model.getColumns(),
-								(Double) xyz.getX(),
-								(Double) xyz.getY(),
-								(Double) theta,
-								String.format("%.3f-%.3f@%.3f", xyz.getZ(), (xyz.getZ() + range), speed)
-							)
-						);
-					}
+					model.insertRow(idx, new AcqRow(xyz.getX(), xyz.getY(), xyz.getZ(), xyz.getZ() + range, (Double) (cont ? acqSliceVel.getSelectedItem() : acqSliceStep.getValue()), cont, theta));
 				} catch(Throwable t) {
 					JOptionPane.showMessageDialog(acqPositionsTable, "Couldn't create stack: " + t.getMessage());
 
@@ -724,8 +693,11 @@ public class SPIMAcquisition implements MMPlugin, ItemListener, ActionListener {
 						String data = (String) java.awt.Toolkit.getDefaultToolkit().getSystemClipboard().getContents(null).getTransferData(DataFlavor.stringFlavor);
 
 						String[] lines = data.split("\n");
-						for(String line : lines)
-							((StepTableModel)acqPositionsTable.getModel()).insertRow((Object[]) line.split("\t"));
+						for(String line : lines) try {
+							((StepTableModel)acqPositionsTable.getModel()).insertRow(line.split("\t"));
+						} catch(Throwable t) {
+							IJ.handleException(t);
+						}
 					} catch(Exception e) {
 						IJ.handleException(e);
 					}
@@ -1532,14 +1504,7 @@ public class SPIMAcquisition implements MMPlugin, ItemListener, ActionListener {
 						// acquisition.
 						basev = applyCalibratedRotation(basev, t - currentRot);
 
-						String z;
-
-//						if(continuousCheckbox.isSelected())
-//							z = ranges[3][0] + "-" + ranges[3][2] + "@10";
-//						else
-							z = ranges[3][0] + ":" + ranges[3][1] + ":" + ranges[3][2];
-
-						rows.add(new AcqRow(canonicalDevices, new String[] {"" + basev.getX(), "" + basev.getY(), "" + t, z}));
+						rows.add(new AcqRow(basev.getX(), basev.getY(), ranges[3][0], ranges[3][1], ranges[3][2], false, t));
 					}
 				}
 			}
