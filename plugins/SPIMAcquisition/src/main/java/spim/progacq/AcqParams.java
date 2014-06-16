@@ -30,6 +30,8 @@ public class AcqParams {
 
 	private boolean				profile;
 
+	public final ProgrammaticAcquisitor.AcqStatus status;
+
 	public AcqParams() {
 		this(null, null, null, 0D, 0, false, null, null, false, null);
 	}
@@ -70,6 +72,8 @@ public class AcqParams {
 			double iTimeStep, int iTimeSeqCnt, boolean iContinuous,
 			ProgrammaticAcquisitor.AcqProgressCallback iListener, SPIMDevice[] iMetaDevices,
 			AcqOutputHandler handler) {
+
+		status = new ProgrammaticAcquisitor.AcqStatus();
 
 		setCore(iCore);
 		setRows(iRows);

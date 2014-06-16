@@ -91,6 +91,73 @@ public class ProgrammaticAcquisitor {
 		}
 	}
 
+	public static class AcqStatus {
+		public static enum Status {
+			PRE_INIT,
+			SETUP,
+			MOVING,
+			ACQUIRING,
+			WAITING,
+			PAUSED,
+			TEARDOWN,
+			DONE
+		}
+
+		// These should only be changed/called from OUTSIDE the acquisition code.
+		private volatile boolean pause; // If true, pause the acquisition process at the next available opportunity. Resume once false.
+
+		public void pause(boolean should) {
+			pause = should;
+		}
+
+		public boolean isPaused() {
+			return pause && status == Status.PAUSED;
+		}
+
+		public long wakesAt() {
+			return status == Status.WAITING ? sequenceResumesAt : -1;
+		}
+
+		// These should only be changed/called from INSIDE the acquisition code.
+		private volatile Status status; // Current state of the acquisition engine.
+		private volatile long sequenceResumesAt; // Milliseconds at which the next sequence starts. -1 if indeterminate/not sleeping.
+
+		public void setup() {
+			status = Status.SETUP;
+		}
+
+		public void moving() {
+			status = Status.MOVING;
+		}
+
+		public void snapping() {
+			status = Status.ACQUIRING;
+		}
+
+		public void sleeping(long until) {
+			sequenceResumesAt = until;
+			status = Status.WAITING;
+		}
+
+		public void paused() {
+			status = Status.PAUSED;
+		}
+
+		public void teardown() {
+			status = Status.TEARDOWN;
+		}
+
+		public void done() {
+			status = Status.DONE;
+		}
+
+		public AcqStatus() {
+			pause = false;
+			status = Status.PRE_INIT;
+			sequenceResumesAt = -1;
+		}
+	}
+
 	/**
 	 * Takes a list of steps and concatenates them together recursively. This is
 	 * what builds out rows from a list of lists of positions.
@@ -262,6 +329,8 @@ public class ProgrammaticAcquisitor {
 		if(params.isContinuous() && params.isAntiDriftOn())
 			throw new IllegalArgumentException("No continuous acquisition w/ anti-drift!");
 
+		params.status.setup();
+
 		final Profiler prof = (params.doProfiling() ? new Profiler("performAcquisition") : null);
 
 		if(params.doProfiling())
@@ -307,6 +376,11 @@ public class ProgrammaticAcquisitor {
 			int step = 0;
 
 			for(final AcqRow row : params.getRows()) {
+				while(params.status.isPaused()) {
+					params.status.paused();
+					Thread.sleep(10);
+				}
+
 				final int tp = timeSeq;
 				final int rown = step;
 
@@ -330,6 +404,7 @@ public class ProgrammaticAcquisitor {
 				if(params.doProfiling())
 					prof.get("Movement").start();
 
+				params.status.moving();
 				runDevicesAtRow(setup, row);
 				Thread.sleep(params.getSettleDelay());
 
@@ -349,6 +424,7 @@ public class ProgrammaticAcquisitor {
 
 				if(row.getZStartPosition() == row.getZEndPosition()) {
 					if(!params.isContinuous()) {
+						params.status.snapping();
 						TaggedImage ti = snapImage(setup, !params.isIllumFullStack());
 
 						handleSlice(row, setup, metaDevs, acqBegan, tp, rown, ti, handler, true);
@@ -364,9 +440,15 @@ public class ProgrammaticAcquisitor {
 						if(Thread.currentThread().isInterrupted())
 							return cleanAbort(params, liveOn, autoShutter);
 
+						while(params.status.isPaused()) {
+							params.status.paused();
+							Thread.sleep(10);
+						}
+
 						if(params.doProfiling())
 							prof.get("Movement").start();
 
+						params.status.moving();
 						setup.getZStage().setPosition(positions[slice]);
 						setup.getZStage().waitFor();
 
@@ -383,6 +465,7 @@ public class ProgrammaticAcquisitor {
 							if(params.doProfiling())
 								prof.get("Acquisition").start();
 
+							params.status.snapping();
 							TaggedImage ti = snapImage(setup, !params.isIllumFullStack());
 							MDUtils.setSliceIndex(ti.tags, slice);
 
@@ -422,6 +505,7 @@ public class ProgrammaticAcquisitor {
 					core.startContinuousSequenceAcquisition(core.getExposure());
 					int sequence = 0;
 
+					params.status.moving();
 					setup.getZStage().setVelocity(row.getZVelocity());
 					setup.getZStage().setPosition(row.getZEndPosition());
 
@@ -499,6 +583,7 @@ public class ProgrammaticAcquisitor {
 	
 				if(wait > 0D)
 					try {
+						params.status.sleeping(System.currentTimeMillis() + (long)(wait * 1e3));
 						Thread.sleep((long)(wait * 1e3));
 					} catch(InterruptedException ie) {
 						return cleanAbort(params, liveOn, autoShutter);
@@ -508,6 +593,8 @@ public class ProgrammaticAcquisitor {
 							+ Double.toString(wait) + "s)");
 			}
 		}
+
+		params.status.teardown();
 
 		if(params.doProfiling())
 			prof.get("Output").start();
@@ -530,6 +617,7 @@ public class ProgrammaticAcquisitor {
 			ij.IJ.log(prof.getLogText());
 		}
 
+		params.status.done();
 		return handler.getImagePlus();
 	}
 
