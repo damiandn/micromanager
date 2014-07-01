@@ -31,16 +31,18 @@ import ij.process.ShortProcessor;
 
 import java.awt.Rectangle;
 import java.text.ParseException;
+
 import javax.swing.SwingUtilities;
 
 import mmcorej.CMMCore;
 import mmcorej.Configuration;
 import mmcorej.TaggedImage;
 
-import org.apache.commons.math.FunctionEvaluationException;
-import org.apache.commons.math.analysis.UnivariateRealFunction;
-import org.apache.commons.math.optimization.GoalType;
-import org.apache.commons.math.optimization.univariate.BrentOptimizer;
+import org.apache.commons.math3.analysis.UnivariateFunction;
+import org.apache.commons.math3.optim.nonlinear.scalar.GoalType;
+import org.apache.commons.math3.optim.univariate.BrentOptimizer;
+import org.apache.commons.math3.optim.univariate.SearchInterval;
+import org.apache.commons.math3.optim.univariate.UnivariateObjectiveFunction;
 import org.json.JSONException;
 import org.micromanager.api.ScriptInterface;
 import org.micromanager.utils.AutofocusBase;
@@ -159,27 +161,31 @@ public class OughtaFocus extends AutofocusBase implements org.micromanager.api.A
       }
    }
 
+   private static class MeasureFocusException extends RuntimeException {
+	   public MeasureFocusException(Throwable cause) {
+		   super(cause);
+	   }
+   }
+   
    private double runAutofocusAlgorithm() throws Exception {
-      UnivariateRealFunction scoreFun = new UnivariateRealFunction() {
-
-         public double value(double d) throws FunctionEvaluationException {
-            try {
-               return measureFocusScore(d);
-            } catch (Exception e) {
-               throw new FunctionEvaluationException(e, d);
-            }
+      UnivariateFunction scoreFun = new UnivariateFunction() {
+         public double value(double d) {
+        	 try {
+        		 return measureFocusScore(d);
+        	 } catch(Exception e) {
+        		 throw new MeasureFocusException(e);
+        	 }
          }
       };
-      BrentOptimizer brentOptimizer = new BrentOptimizer();
-      brentOptimizer.setAbsoluteAccuracy(tolerance);
+      BrentOptimizer brentOptimizer = new BrentOptimizer(Math.sqrt(Math.ulp(1.d)), tolerance);
       imageCount_ = 0;
 
       CMMCore core = app_.getMMCore();
       double z = core.getPosition(core.getFocusDevice());
       startZUm_ = z;
 //      getCurrentFocusScore();
-      double zResult = brentOptimizer.optimize(scoreFun, GoalType.MAXIMIZE, z - searchRange / 2, z + searchRange / 2);
-      ReportingUtils.logMessage("OughtaFocus Iterations: " + brentOptimizer.getIterationCount()
+      double zResult = brentOptimizer.optimize(new UnivariateObjectiveFunction(scoreFun), GoalType.MAXIMIZE, new SearchInterval(z - searchRange / 2, z + searchRange / 2)).getPoint();
+      ReportingUtils.logMessage("OughtaFocus Iterations: " + brentOptimizer.getIterations()
               + ", z=" + TextUtils.FMT2.format(zResult)
               + ", dz=" + TextUtils.FMT2.format(zResult - startZUm_)
               + ", t=" + (System.currentTimeMillis() - startTimeMs_));
