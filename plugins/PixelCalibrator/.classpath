@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<classpath>
+	<classpathentry kind="src" path="src"/>
+	<classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER"/>
+	<classpathentry kind="lib" path="C:/openspim-dev-env/src/3rdpartypublic/classext/commons-math3-3.3.jar"/>
+	<classpathentry kind="lib" path="C:/openspim-dev-env/src/micromanager/OpenSPIM.app-Win32/plugins/Micro-Manager/MMJ_.jar"/>
+	<classpathentry kind="lib" path="C:/openspim-dev-env/src/micromanager/OpenSPIM.app-Win32/plugins/Micro-Manager/MMCoreJ.jar"/>
+	<classpathentry kind="lib" path="C:/openspim-dev-env/src/3rdpartypublic/classext/ij.jar"/>
+	<classpathentry kind="output" path="bin"/>
+</classpath>

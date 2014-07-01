@@ -1,5 +1,5 @@
 package org.micromanager.pixelcalibrator;
-import org.apache.commons.math.util.MathUtils;
+import org.apache.commons.math3.util.Precision;
 
 import java.awt.geom.AffineTransform;
 import java.util.prefs.Preferences;
@@ -123,7 +123,7 @@ public class PixelCalibratorPlugin implements MMPlugin {
                  "securely immobilized on the stage. When you are ready, press\n" +
                  "Start to try again.");
       } else {
-         double pixelSize = MathUtils.round(getPixelSize(result), 4);
+         double pixelSize = Precision.round(getPixelSize(result), 4);
 
          CalibrationListDlg calDialog = app_.getCalibrationListDlg();
          calDialog.updateCalibrations();
