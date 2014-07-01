@@ -9,13 +9,13 @@
 package edu.valelab.GaussianFit;
 
 
-import org.apache.commons.math.analysis.*;
+import org.apache.commons.math3.analysis.*;
 
 /**
  *
  * @author nico
  */
-public class MultiVariateGaussianFunction implements MultivariateRealFunction {
+public class MultiVariateGaussianFunction implements MultivariateFunction {
 
    int[] data_;
    int nx_;

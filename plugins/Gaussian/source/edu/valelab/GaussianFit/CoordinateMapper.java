@@ -38,11 +38,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import org.apache.commons.math.linear.Array2DRowRealMatrix;
-import org.apache.commons.math.linear.DecompositionSolver;
-import org.apache.commons.math.linear.LUDecompositionImpl;
-import org.apache.commons.math.linear.QRDecompositionImpl;
-import org.apache.commons.math.linear.RealMatrix;
+import org.apache.commons.math3.linear.Array2DRowRealMatrix;
+import org.apache.commons.math3.linear.DecompositionSolver;
+import org.apache.commons.math3.linear.LUDecomposition;
+import org.apache.commons.math3.linear.QRDecomposition;
+import org.apache.commons.math3.linear.RealMatrix;
+import org.apache.commons.math3.linear.RealVector;
+import org.apache.commons.math3.linear.ArrayRealVector;
 
 
 
@@ -165,17 +167,17 @@ public class CoordinateMapper {
       for (int i=0; i<srcPoints.size(); ++i) {
          matrix.setRow(i, powerTerms(srcPoints.get(i).x, srcPoints.get(i).y, exponentPairs));
       }
-      final DecompositionSolver solver = new LUDecompositionImpl(matrix).getSolver();
-      final double [] destX = new double[srcPoints.size()];
-      final double [] destY = new double[srcPoints.size()];
+      final DecompositionSolver solver = new LUDecomposition(matrix).getSolver();
+      final RealVector destX = new ArrayRealVector(srcPoints.size());
+      final RealVector destY = new ArrayRealVector(srcPoints.size());
       for (int i=0; i<srcPoints.size(); ++i) {
          final Point2D.Double destPoint = pointPairs.get(srcPoints.get(i));
-         destX[i] = destPoint.x;
-         destY[i] = destPoint.y;
+         destX.setEntry(i, destPoint.x);
+         destY.setEntry(i, destPoint.y);
       }
       final PolynomialCoefficients polys = new PolynomialCoefficients();
-      polys.polyX = solver.solve(destX);
-      polys.polyY = solver.solve(destY);
+      polys.polyX = solver.solve(destX).toArray();
+      polys.polyY = solver.solve(destY).toArray();
       return polys;
    }
 
@@ -260,7 +262,7 @@ public class CoordinateMapper {
       }
       // Find the 3x3 linear least squares solution to u*m'=v
       // (the last row should be [0,0,1]):
-      DecompositionSolver solver = (new QRDecompositionImpl(u)).getSolver();
+      DecompositionSolver solver = (new QRDecomposition(u)).getSolver();
       double[][] m = solver.solve(v).transpose().getData();
       
       AffineTransform tmp = new AffineTransform(m[0][0], m[1][0], m[0][1], m[1][1], m[0][2], m[1][2]);
@@ -312,7 +314,7 @@ public class CoordinateMapper {
          i++;
       }
       
-      DecompositionSolver solver = (new QRDecompositionImpl(X)).getSolver();
+      DecompositionSolver solver = (new QRDecomposition(X)).getSolver();
       double[][] m = solver.solve(U).getData();
       
       

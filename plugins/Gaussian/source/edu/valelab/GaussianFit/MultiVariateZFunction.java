@@ -1,7 +1,8 @@
 package edu.valelab.GaussianFit;
 
-import org.apache.commons.math.FunctionEvaluationException;
-import org.apache.commons.math.analysis.MultivariateRealFunction;
+import org.apache.commons.math3.exception.MathIllegalArgumentException;
+import org.apache.commons.math3.exception.util.DummyLocalizable;
+import org.apache.commons.math3.analysis.MultivariateFunction;
 
 /**
  *
@@ -20,7 +21,7 @@ import org.apache.commons.math.analysis.MultivariateRealFunction;
  *
  * @author nico
  */
-public class MultiVariateZFunction implements MultivariateRealFunction {
+public class MultiVariateZFunction implements MultivariateFunction {
    
    private double[] fitFunctionWx_;
    private double[] fitFunctionWy_;
@@ -43,12 +44,13 @@ public class MultiVariateZFunction implements MultivariateRealFunction {
     *       0: z
 
     *       
+    * @throws MathIllegalArgumentException
     * @return
     * @throws FunctionEvaluationException 
     */
-   public double value(double[] params) throws FunctionEvaluationException {
+   public double value(double[] params) throws MathIllegalArgumentException {
       if (params.length < 1)
-         throw new FunctionEvaluationException(0);
+         throw new MathIllegalArgumentException(new DummyLocalizable(""));
      
       return funcval(params);
    }

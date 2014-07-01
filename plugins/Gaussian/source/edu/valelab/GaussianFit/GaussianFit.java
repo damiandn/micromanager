@@ -6,21 +6,29 @@
 
 package edu.valelab.GaussianFit;
 
+import java.util.Collection;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import org.apache.commons.math.FunctionEvaluationException;
-import org.apache.commons.math.optimization.OptimizationException;
-import org.apache.commons.math.optimization.direct.NelderMead;
-import org.apache.commons.math.optimization.RealPointValuePair;
-import org.apache.commons.math.optimization.SimpleScalarValueChecker;
-import org.apache.commons.math.optimization.GoalType;
-import org.apache.commons.math.optimization.fitting.CurveFitter;
+
+import org.apache.commons.math3.fitting.AbstractCurveFitter;
+import org.apache.commons.math3.fitting.WeightedObservedPoint;
+import org.apache.commons.math3.fitting.WeightedObservedPoints;
+import org.apache.commons.math3.fitting.leastsquares.LeastSquaresBuilder;
+import org.apache.commons.math3.fitting.leastsquares.LeastSquaresOptimizer;
+import org.apache.commons.math3.fitting.leastsquares.LeastSquaresProblem;
+import org.apache.commons.math3.fitting.leastsquares.LevenbergMarquardtOptimizer;
+import org.apache.commons.math3.linear.DiagonalMatrix;
+import org.apache.commons.math3.optim.ConvergenceChecker;
+import org.apache.commons.math3.optim.nonlinear.scalar.GoalType;
+import org.apache.commons.math3.optim.nonlinear.scalar.ObjectiveFunction;
+import org.apache.commons.math3.optim.nonlinear.scalar.gradient.NonLinearConjugateGradientOptimizer;
+import org.apache.commons.math3.optim.nonlinear.scalar.noderiv.NelderMeadSimplex;
+import org.apache.commons.math3.optim.nonlinear.scalar.noderiv.SimplexOptimizer;
+import org.apache.commons.math3.optim.PointValuePair;
+import org.apache.commons.math3.optim.PointVectorValuePair;
+import org.apache.commons.math3.optim.SimpleValueChecker;
 
 import ij.process.ImageProcessor;
-import org.apache.commons.math.optimization.VectorialConvergenceChecker;
-import org.apache.commons.math.optimization.VectorialPointValuePair;
-import org.apache.commons.math.optimization.general.LevenbergMarquardtOptimizer;
-import org.apache.commons.math.optimization.general.NonLinearConjugateGradientOptimizer;
 
 /**
  *
@@ -49,12 +57,15 @@ public class GaussianFit {
    int mode_ = 1;
    int fitMode_ = 1;
 
-   NelderMead nm_;
-   SimpleScalarValueChecker convergedChecker_;
+   NelderMeadSimplex nm_;
+   SimpleValueChecker convergedChecker_;
    MultiVariateGaussianFunction mGF_;
    MultiVariateGaussianMLE mGFMLE_;
    NonLinearConjugateGradientOptimizer nlcgo_;
    LevenbergMarquardtOptimizer lMO_;
+
+	boolean estimateByMaximum;
+	boolean hardCodedSteps;
 
    /**
     * Gaussian fit can be run by estimating parameter c (width of Gaussian)
@@ -64,7 +75,7 @@ public class GaussianFit {
     * @param fitmode - algorithm use: NelderMead (1), Levenberg Marquard (2), 
     *                   NelderMean MLE (3), LevenberMarquard MLE(4)
     */
-   public GaussianFit(int mode, int fitMode) {
+	public GaussianFit(int mode, int fitMode, boolean estByMax, boolean hardCodeStp) {
       super();
       fitMode_ = fitMode;
       if (mode == 1) {
@@ -83,19 +94,15 @@ public class GaussianFit {
       steps_ = new double[mode_ + 4];
 
       if (fitMode_ == 1) {
-         nm_ = new NelderMead();
-         convergedChecker_ = new SimpleScalarValueChecker(1e-6,-1);
+         convergedChecker_ = new SimpleValueChecker(1e-6,-1);
          mGF_ = new MultiVariateGaussianFunction(mode_);
       }
       // Levenberg-Marquardt and weighted Levenberg-Marquardt
       if (fitMode_ == 2 || fitMode == 4) {
          lMO_ = new LevenbergMarquardtOptimizer();
-         LMChecker lmChecker = new LMChecker();
-         lMO_.setConvergenceChecker(lmChecker);
       }
       if (fitMode_ == 3) {
-         nm_ = new NelderMead();
-         convergedChecker_ = new SimpleScalarValueChecker(1e-6,-1);
+         convergedChecker_ = new SimpleValueChecker(1e-6,-1);
          mGFMLE_ = new MultiVariateGaussianMLE(mode_);
       }
       /*
@@ -110,7 +117,14 @@ public class GaussianFit {
          nlcgo_.setInitialStep(0.0000002);
       }
       */
+
+      estimateByMaximum = estByMax;
+      hardCodedSteps = hardCodeStp;
    }
+
+	public GaussianFit(int mode, int fitmode) {
+		this(mode, fitmode, false, false);
+	}
 
  
    /**
@@ -125,50 +139,73 @@ public class GaussianFit {
     * @param maxIterations - maximum number of iterations for the Nelder Mead
     *   optimization algorithm
     */
-   public double[] doGaussianFit (ImageProcessor siProc, int maxIterations) {
+   public double[] doGaussianFit (final ImageProcessor siProc, final int maxIterations) {
       estimateParameters(siProc);
 
       double[] paramsOut = {0.0};
 
       if (fitMode_ == 1) {
-         nm_.setStartConfiguration(steps_);
-         nm_.setConvergenceChecker(convergedChecker_);
-         nm_.setMaxIterations(maxIterations);
+      	 nm_ = new NelderMeadSimplex(steps_);
+      	 nm_.build(params0_);
+         SimplexOptimizer opt = new SimplexOptimizer(convergedChecker_);
          mGF_.setImage((short[]) siProc.getPixels(), siProc.getWidth(), siProc.getHeight());
          try {
-            RealPointValuePair result = nm_.optimize(mGF_, GoalType.MINIMIZE, params0_);
+            PointValuePair result = opt.optimize(nm_, new ObjectiveFunction(mGF_), GoalType.MINIMIZE);
             paramsOut = result.getPoint();
          } catch (java.lang.OutOfMemoryError e) {
             throw(e);
          } catch (Exception e) {
-            ij.IJ.log(" " + e.toString());
-            //e.printStackTrace();
+            ij.IJ.handleException(e);
          }
       }
 
       if (fitMode_ == 2 || fitMode_ == 4) {
-         
-         // lMO_.setMaxIterations(maxIterations);
-         CurveFitter cF = new CurveFitter(lMO_);
+    	 // TODO If I had to guess, this is basically how commons-math3.3's GaussianCurveFitter works. Perhaps use their code instead?
+         AbstractCurveFitter cF = new AbstractCurveFitter() {
+			@Override
+			protected LeastSquaresProblem getProblem(Collection<WeightedObservedPoint> observed) {
+				TheoreticalValuesFunction tvf = new TheoreticalValuesFunction(new ParametricGaussianFunction(mode_, siProc.getWidth(), siProc.getHeight()), observed);
+				
+				double[] obs = new double[observed.size()];
+				double[] wgt = new double[observed.size()];
+				int i = -1;
+				for(WeightedObservedPoint wop : observed) {
+					obs[++i] = wop.getY();
+					wgt[i] = wop.getWeight();
+				}
+
+				return new LeastSquaresBuilder()
+						.maxEvaluations(Integer.MAX_VALUE)
+						.maxIterations(maxIterations)
+						.checkerPair(new LMChecker())
+						.model(tvf.getModelFunction(), tvf.getModelFunctionJacobian())
+						.start(params0_)
+						.target(obs)
+						.weight(new DiagonalMatrix(wgt))
+						.build();
+			}
+
+			@Override
+			protected LeastSquaresOptimizer getOptimizer() {
+				return new LevenbergMarquardtOptimizer();
+			}
+         };
+
+         WeightedObservedPoints points = new WeightedObservedPoints();
          short[] pixels = (short[]) siProc.getPixels();
          if (fitMode_ == 2) {
             for (int i = 0; i < pixels.length; i++) {
-               cF.addObservedPoint(i, (int) pixels[i] & 0xffff);
+               points.add(1, i, (int) pixels[i] & 0xffff);
             }
          }
          if (fitMode_ == 4) {
             for (int i = 0; i < pixels.length; i++) {
-               double factor = ((int) pixels[i] & 0xffff) ;
-               cF.addObservedPoint(1 / factor, i, (int) pixels[i] & 0xffff);
+               double factor = ((int) pixels[i] & 0xffff);
+               points.add(1 / factor, i, ((int) pixels[i] & 0xffff));
             }
          }
          try {
-            paramsOut = cF.fit(new ParametricGaussianFunction( mode_, siProc.getWidth(), siProc.getHeight() ),
-                    params0_);
-         } catch (FunctionEvaluationException ex) {
-            Logger.getLogger(GaussianFit.class.getName()).log(Level.SEVERE, null, ex);
-         } catch (OptimizationException ex) {
-            // Logger.getLogger(GaussianFit.class.getName()).log(Level.SEVERE, null, ex);
+            paramsOut = cF.fit(points.toList());
          } catch (IllegalArgumentException ex) {
             Logger.getLogger(GaussianFit.class.getName()).log(Level.SEVERE, null, ex);
          } catch(Exception ex) {
@@ -178,18 +215,16 @@ public class GaussianFit {
       
       // Simplex-MLE
       if (fitMode_ == 3) {
-         nm_.setStartConfiguration(steps_);
-         nm_.setConvergenceChecker(convergedChecker_);
-         nm_.setMaxIterations(maxIterations);
+    	 nm_ = new NelderMeadSimplex(steps_);
+         nm_.build(params0_);
          mGFMLE_.setImage((short[]) siProc.getPixels(), siProc.getWidth(), siProc.getHeight());
          try {
-            RealPointValuePair result = nm_.optimize(mGFMLE_, GoalType.MINIMIZE, params0_);
+            PointValuePair result = new SimplexOptimizer(convergedChecker_).optimize(nm_, new ObjectiveFunction(mGFMLE_), GoalType.MINIMIZE);;
             paramsOut = result.getPoint();
          } catch (java.lang.OutOfMemoryError e) {
             throw(e);
          } catch (Exception e) {
-            ij.IJ.log(" " + e.toString());
-            //e.printStackTrace();
+            ij.IJ.handleException(e);
          }
       }
       
@@ -251,29 +286,40 @@ public class GaussianFit {
          bg += (imagePixels[(i + 1) * siProc.getWidth() - 1] & 0xffff);
          n += 2;
       }
-      params0_[BGR] = bg / n;
-      // estimate signal by subtracting background from total intensity
-      double mt = 0.0;
-      for (int i = 0; i < siProc.getHeight() * siProc.getWidth(); i++) {
-         mt += (imagePixels[i] & 0xffff);
-      }
-      double ti = mt - ((bg / n) * siProc.getHeight() * siProc.getWidth());
-      params0_[INT] = ti / (2 * Math.PI * params0_[S] * params0_[S]);
-      // print("Total signal: " + ti + "Estimate: " + params0_[0]);
+      params0_[BGR] = (bg /= n);
       // estimate center of mass
+      double mt = 0.0;
       double mx = 0.0;
       double my = 0.0;
       for (int i = 0; i < siProc.getHeight() * siProc.getWidth(); i++) {
-         //mx += (imagePixels[i] - params0_[4]) * (i % siProc.getWidth() );
-         //my += (imagePixels[i] - params0_[4]) * (Math.floor (i / siProc.getWidth()));
-         mx += ((imagePixels[i] & 0xffff)) * (i % siProc.getWidth());
-         my += ((imagePixels[i] & 0xffff)) * (Math.floor(i / siProc.getWidth()));
+         double weight = (imagePixels[i] & 0xffff) - bg;
+
+         if(params0_[INT] < weight) {
+            params0_[INT] = weight;
+            params0_[XC] = i % siProc.getWidth();
+            params0_[YC] = i / siProc.getWidth();
+         }
+
+         if(!estimateByMaximum) {
+            mt += (int) weight;
+            mx += (int) weight * (i % siProc.getWidth());
+            my += (int) weight * (i / siProc.getWidth());
+         }
       }
-      params0_[XC] = mx / mt;
-      params0_[YC] = my / mt;
-      //ij.IJ.log("Centroid: " + mx/mt + " " + my/mt);
+      if(!estimateByMaximum) {
+         params0_[INT] = mt / (2 * Math.PI * params0_[S] * params0_[S]);
+         params0_[XC] = mx / mt;
+         params0_[YC] = my / mt;
+      };
       // set step size during estimate
-      for (int i = 0; i < params0_.length; ++i) {
+      if(hardCodedSteps) {
+         steps_[INT] = 0.5; //params0_[INT]*0.3;
+         steps_[BGR] = params0_[BGR]*0.3;
+         steps_[XC] = 0.1;
+         steps_[YC] = 0.1;
+      }
+
+      for (int i = (hardCodedSteps ? S : 0); i < params0_.length; ++i) {
          steps_[i] = params0_[i] * 0.3;
          if (steps_[i] == 0)
             steps_[i] = 0.1;
@@ -281,10 +327,10 @@ public class GaussianFit {
    }
    
    
-   private class LMChecker implements VectorialConvergenceChecker {
+   private class LMChecker implements ConvergenceChecker<PointVectorValuePair> {
       int iteration_ = 0;
       boolean lastResult_ = false;
-      public boolean converged(int i, VectorialPointValuePair previous, VectorialPointValuePair current) {
+      public boolean converged(int i, PointVectorValuePair previous, PointVectorValuePair current) {
          if (i == iteration_)
             return lastResult_;
          

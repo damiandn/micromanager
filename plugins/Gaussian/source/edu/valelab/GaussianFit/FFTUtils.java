@@ -4,8 +4,11 @@
 package edu.valelab.GaussianFit;
 
 import edu.valelab.GaussianFit.utils.RowData;
-import org.apache.commons.math.complex.Complex;
-import org.apache.commons.math.transform.FastFourierTransformer;
+
+import org.apache.commons.math3.complex.Complex;
+import org.apache.commons.math3.transform.DftNormalization;
+import org.apache.commons.math3.transform.FastFourierTransformer;
+import org.apache.commons.math3.transform.TransformType;
 import org.jfree.data.xy.XYSeries;
 
 /**
@@ -13,35 +16,6 @@ import org.jfree.data.xy.XYSeries;
  * @author nico
  */
 public class FFTUtils {
-   
-   
-   /**
-    * simple and bad way to calculate next power of 2
-    * @param n query number
-    * @return first number > n that is a power of 2
-    */
-   public static int nextPowerOf2(int n) {
-      int res = 1;
-      while (res < n) {
-         res <<= 1;
-      }
-      return res;
-   }
-
-   /**
-    * simple and bad way to calculate the highest power of 2 contained in this number
-    * @param n query
-    * @return highest number < n that is a power of 2
-    */
-   public static int previousPowerOf2(int n) {
-      int res = 1;
-      while (res < n) {
-         res <<= 1;
-      }
-      res >>=1;
-      return res ;
-   }
-   
   /**
     * Calculates Power Spectrum density for the given datasets
     * and add result to a XYSeries for graphing using JFreeChart
@@ -54,11 +28,11 @@ public class FFTUtils {
            XYSeries[] datas,
            DataCollectionForm.PlotMode plotMode) {
       for (int index = 0; index < rowDatas.length; index++) {
-         FastFourierTransformer fft = new FastFourierTransformer();
+         FastFourierTransformer fft = new FastFourierTransformer(DftNormalization.STANDARD);
          datas[index] = new XYSeries(rowDatas[index].ID_);
          int length = rowDatas[index].spotList_.size();
-         if (!FastFourierTransformer.isPowerOf2(length)) {
-            length = FFTUtils.previousPowerOf2(length);
+         if (Integer.bitCount(length) != 1) { // N.B. equivalent to (formerly) FastFourierTransformer.isPowerOf2.
+            length = Integer.highestOneBit(length) * 2; // N.B. equivalent to (formerly) FFTUtils.nextPowerOf2.
          }
          double[] d = new double[length];
 
@@ -71,7 +45,7 @@ public class FFTUtils {
             else if (plotMode == DataCollectionForm.PlotMode.INT)
                d[i] = spot.getIntensity();
          }
-         Complex[] c = fft.transform(d);
+         Complex[] c = fft.transform(d, TransformType.FORWARD);
          int size = c.length / 2;
          double[] e = new double[size];
          double[] f = new double[size];

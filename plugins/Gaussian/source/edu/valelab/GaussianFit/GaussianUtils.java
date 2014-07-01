@@ -15,11 +15,10 @@ import java.awt.geom.Point2D;
 import java.awt.geom.Rectangle2D;
 import java.util.ArrayList;
 
-import org.apache.commons.math.linear.Array2DRowRealMatrix;
-import org.apache.commons.math.linear.RealMatrix;
-import org.apache.commons.math.linear.SingularValueDecompositionImpl;
-import org.apache.commons.math.stat.StatUtils;
-
+import org.apache.commons.math3.linear.Array2DRowRealMatrix;
+import org.apache.commons.math3.linear.RealMatrix;
+import org.apache.commons.math3.linear.SingularValueDecomposition;
+import org.apache.commons.math3.stat.StatUtils;
 import org.jfree.chart.plot.PlotOrientation;
 import org.jfree.chart.plot.XYPlot;
 import org.jfree.chart.renderer.xy.XYLineAndShapeRenderer;
@@ -259,7 +258,7 @@ public class GaussianUtils {
 
       Array2DRowRealMatrix dataM = new Array2DRowRealMatrix(data);
 
-      SingularValueDecompositionImpl sVD = new SingularValueDecompositionImpl(dataM);
+      SingularValueDecomposition sVD = new SingularValueDecomposition(dataM);
       RealMatrix output = sVD.getUT().multiply(dataM);
 
       ArrayList<Point2D.Double> result = new ArrayList<Point2D.Double>();

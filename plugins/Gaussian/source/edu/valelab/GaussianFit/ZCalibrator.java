@@ -15,14 +15,14 @@
 package edu.valelab.GaussianFit;
 
 import java.util.ArrayList;
-import org.apache.commons.math.FunctionEvaluationException;
-import org.apache.commons.math.optimization.GoalType;
-import org.apache.commons.math.optimization.OptimizationException;
-import org.apache.commons.math.optimization.RealPointValuePair;
-import org.apache.commons.math.optimization.SimpleScalarValueChecker;
-import org.apache.commons.math.optimization.direct.NelderMead;
-import org.jfree.data.xy.XYSeries;
 
+import org.apache.commons.math3.optim.PointValuePair;
+import org.apache.commons.math3.optim.SimpleValueChecker;
+import org.apache.commons.math3.optim.nonlinear.scalar.GoalType;
+import org.apache.commons.math3.optim.nonlinear.scalar.ObjectiveFunction;
+import org.apache.commons.math3.optim.nonlinear.scalar.noderiv.SimplexOptimizer;
+import org.apache.commons.math3.optim.nonlinear.scalar.noderiv.NelderMeadSimplex;
+import org.jfree.data.xy.XYSeries;
 
 import ij.measure.ResultsTable;
 
@@ -142,10 +142,10 @@ public class ZCalibrator {
     * 
     * 
     */
-   public void fitFunction() throws FunctionEvaluationException, OptimizationException {
+   public void fitFunction() {
       
-      NelderMead nmx = new NelderMead();
-      SimpleScalarValueChecker convergedChecker_ = new SimpleScalarValueChecker(1e-6,-1);
+      NelderMeadSimplex nmx = new NelderMeadSimplex(1);
+      SimpleValueChecker convergedChecker_ = new SimpleValueChecker(1e-6,-1);
       
       double[][] wxData = getDataAsArray(0);
       MultiVariateZCalibrationFunction mvcx = new MultiVariateZCalibrationFunction(wxData);
@@ -157,13 +157,11 @@ public class ZCalibrator {
       params0_[3] = 1;   // TODO: better estimate for A
       params0_[4] = 1;   // TODO: better estimate for B
       
-      nmx.setStartConfiguration(params0_);
-      nmx.setConvergenceChecker(convergedChecker_);
-      nmx.setMaxIterations(maxIterations_);
+      SimplexOptimizer opt = new SimplexOptimizer(convergedChecker_);
       
       double[] paramsOut = {0.0};
       
-      RealPointValuePair result = nmx.optimize(mvcx, GoalType.MINIMIZE, params0_);
+      PointValuePair result = opt.optimize(nmx, new ObjectiveFunction(mvcx), GoalType.MINIMIZE);
       paramsOut = result.getPoint();
       
       // write fit result to Results Table:
@@ -177,13 +175,10 @@ public class ZCalibrator {
                
       fitFunctionWx_ = paramsOut;
       
-       
       double[][] yxData = getDataAsArray(1);
       MultiVariateZCalibrationFunction yvcx = new MultiVariateZCalibrationFunction(yxData);
       
-      nmx.setStartConfiguration(params0_);
-      
-      result = nmx.optimize(yvcx, GoalType.MINIMIZE, params0_);
+      result = opt.optimize(new ObjectiveFunction(yvcx), GoalType.MINIMIZE);
       paramsOut = result.getPoint();
 
       res.incrementCounter();
@@ -217,8 +212,8 @@ public class ZCalibrator {
       if (!hasFitFunctions())
          return 0.0;
       
-      NelderMead nmx = new NelderMead();
-      SimpleScalarValueChecker convergedChecker_ = new SimpleScalarValueChecker(1e-6,-1);
+      NelderMeadSimplex nmx = new NelderMeadSimplex(1);
+      SimpleValueChecker convergedChecker_ = new SimpleValueChecker(1e-6,-1);
       
       MultiVariateZFunction mz = new MultiVariateZFunction(fitFunctionWx_, fitFunctionWy_,
               wx, wy);
@@ -227,14 +222,12 @@ public class ZCalibrator {
       params0_[0] = 15;  // TODO: Need the middle z value of the stack here!!!
 
       
-      nmx.setStartConfiguration(params0_);
-      nmx.setConvergenceChecker(convergedChecker_);
-      nmx.setMaxIterations(maxIterations_);
+      SimplexOptimizer opt = new SimplexOptimizer(convergedChecker_);
       
       double[] paramsOut = {0.0};
       
       try {
-         RealPointValuePair result = nmx.optimize(mz, GoalType.MINIMIZE, params0_);
+         PointValuePair result = opt.optimize(nmx, new ObjectiveFunction(mz), GoalType.MINIMIZE);
          paramsOut = result.getPoint();
       } catch (java.lang.OutOfMemoryError e) {
          throw (e);
