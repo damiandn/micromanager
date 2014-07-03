@@ -9,7 +9,6 @@ import java.util.Vector;
 
 import javax.swing.table.AbstractTableModel;
 
-import spim.progacq.AcqRow.ValueSet;
 import spim.setup.SPIMSetup.SPIMDevice;
 
 /**

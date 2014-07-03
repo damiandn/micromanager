@@ -11,7 +11,6 @@ import javax.swing.JFrame;
 import javax.swing.JPanel;
 
 import ij.ImagePlus;
-import ij.ImageStack;
 import ij.process.Blitter;
 import ij.process.ColorBlitter;
 import ij.process.ColorProcessor;
@@ -98,12 +97,6 @@ public class ProjDiffAntiDrift extends AntiDrift {
 				d = zy.getHeight();
 
 			return d;
-		}
-
-		public void show() {
-			new ImagePlus("XY", xy).show();
-			new ImagePlus("XZ", xz).show();
-			new ImagePlus("ZY", zy).show();
 		}
 
 		public void writeDiff(final Projections other, double zratio, Vector3D d, Vector3D c, File file) {

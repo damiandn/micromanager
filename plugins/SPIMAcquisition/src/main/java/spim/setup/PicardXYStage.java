@@ -1,7 +1,5 @@
 package spim.setup;
 
-import ij.IJ;
-
 import java.util.HashMap;
 import java.util.Map;
 

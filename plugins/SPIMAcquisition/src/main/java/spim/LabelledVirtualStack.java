@@ -3,8 +3,6 @@ package spim;
 import java.awt.image.ColorModel;
 import java.util.Arrays;
 
-import org.micromanager.utils.ReportingUtils;
-
 import ij.VirtualStack;
 
 public class LabelledVirtualStack extends VirtualStack {

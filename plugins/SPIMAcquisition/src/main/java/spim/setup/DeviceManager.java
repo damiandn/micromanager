@@ -22,6 +22,8 @@ import spim.LayoutUtils;
 import spim.setup.SPIMSetup.SPIMDevice;
 
 public class DeviceManager extends JPanel implements ItemListener, EventListener {
+	private static final long serialVersionUID = 8325911290182739740L;
+
 	private SPIMSetup setup;
 	private JFrame display;
 

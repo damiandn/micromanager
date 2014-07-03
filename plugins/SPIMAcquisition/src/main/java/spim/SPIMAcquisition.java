@@ -27,8 +27,6 @@ import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.io.File;
 import java.io.FilenameFilter;
-import java.text.NumberFormat;
-import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -63,7 +61,6 @@ import javax.swing.JTabbedPane;
 import javax.swing.JTable;
 import javax.swing.JTextField;
 import javax.swing.SpinnerNumberModel;
-import javax.swing.table.TableModel;
 
 import mmcorej.CMMCore;
 import mmcorej.DeviceType;
@@ -1398,14 +1395,6 @@ public class SPIMAcquisition implements MMPlugin, ItemListener, ActionListener {
 
 	// Accessing the devices
 
-	protected void maybeUpdateImage() {
-		if (setup.isConnected(SPIMDevice.CAMERA1) && updateLiveImage && !gui.isLiveModeOn()) {
-			synchronized(frame) {
-				gui.updateImage();
-			}
-		}
-	}
-
 	/**
 	 * This main() method is for use with Fiji's Script Editor
 	 */
@@ -1486,8 +1475,6 @@ public class SPIMAcquisition implements MMPlugin, ItemListener, ActionListener {
 
 	private AcqRow[] getBuiltRows() throws Exception {
 		List<AcqRow> rows = new ArrayList<AcqRow>();
-
-		SPIMDevice[] canonicalDevices = new SPIMDevice[] {SPIMDevice.STAGE_X, SPIMDevice.STAGE_Y, SPIMDevice.STAGE_THETA, SPIMDevice.STAGE_Z};
 
 		if(SPIM_RANGES.equals(acqPosTabs.getSelectedComponent().getName())) {
 			double currentRot = setup.getAngle();

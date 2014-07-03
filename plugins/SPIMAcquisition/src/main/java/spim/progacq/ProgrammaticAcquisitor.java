@@ -2,8 +2,6 @@ package spim.progacq;
 
 import ij.ImagePlus;
 
-import java.io.PrintWriter;
-import java.io.StringWriter;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -278,9 +276,7 @@ public class ProgrammaticAcquisitor {
 			MDUtils.setFrameIndex(ti.tags, 0);
 			MDUtils.setPositionIndex(ti.tags, 0);
 			MDUtils.setSliceIndex(ti.tags, 0);
-			ti.tags.put("Summary", f.getAcquisition(MMStudioMainFrame.SIMPLE_ACQ).getSummaryMetadata());
-			f.addStagePositionToTags(ti);
-			f.addImage(MMStudioMainFrame.SIMPLE_ACQ, ti, true, false);
+			f.displayImage(ti);
 		} catch (Throwable t) {
 			ReportingUtils.logError(t, "Attemped to update live window.");
 		}

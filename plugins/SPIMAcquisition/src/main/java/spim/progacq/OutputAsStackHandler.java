@@ -1,11 +1,7 @@
 package spim.progacq;
 
-import java.util.LinkedList;
-import java.util.List;
-
 import mmcorej.TaggedImage;
 
-import org.json.JSONObject;
 import org.micromanager.utils.ImageUtils;
 import org.micromanager.utils.MDUtils;
 

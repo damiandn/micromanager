@@ -60,10 +60,8 @@ import org.apache.commons.math3.geometry.euclidean.threed.Line;
 import org.apache.commons.math3.geometry.euclidean.twod.Vector2D;
 
 
-import org.json.JSONException;
 import org.micromanager.MMStudioMainFrame;
 import org.micromanager.utils.MDUtils;
-import org.micromanager.utils.MMScriptException;
 import org.micromanager.utils.ReportingUtils;
 
 import spim.setup.SPIMSetup;
@@ -466,8 +464,11 @@ public class SPIMAutoCalibrator extends JFrame implements SPIMCalibrator, Action
 			Thread.sleep(15);
 
 			TaggedImage ti = setup.getCamera().snapImage();
-			addTags(ti, 0);
-			gui.addImage(MMStudioMainFrame.SIMPLE_ACQ, ti, true, true);
+			MDUtils.setChannelIndex(ti.tags, 0);
+			MDUtils.setFrameIndex(ti.tags, 0);
+			MDUtils.setPositionIndex(ti.tags, 0);
+			MDUtils.setSliceIndex(ti.tags, 0);
+			gui.displayImage(ti);
 
 			MMStudioMainFrame.getSimpleDisplay().updateAndDraw(true);
 
@@ -528,19 +529,6 @@ public class SPIMAutoCalibrator extends JFrame implements SPIMCalibrator, Action
 
 		return c;
 	};
-
-	private void addTags(TaggedImage ti, int channel) throws JSONException {
-		MDUtils.setChannelIndex(ti.tags, channel);
-		MDUtils.setFrameIndex(ti.tags, 0);
-		MDUtils.setPositionIndex(ti.tags, 0);
-		MDUtils.setSliceIndex(ti.tags, 0);
-		try {
-			ti.tags.put("Summary", MMStudioMainFrame.getInstance().getAcquisition(MMStudioMainFrame.SIMPLE_ACQ).getSummaryMetadata());
-		} catch (MMScriptException ex) {
-			ReportingUtils.logError(ex, "Error adding summary metadata to tags");
-		}
-		gui.addStagePositionToTags(ti);
-	}
 
 	private boolean getNextBead() throws Exception {
 		Vector3D next = scanBead((Double)firstDelta.getValue());
