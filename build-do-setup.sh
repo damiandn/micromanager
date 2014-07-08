@@ -110,49 +110,13 @@ mv "ImageJ.exe" "ImageJ.exe.old";
 cp "ImageJ-win${bits}.exe" "ImageJ.exe";
 
 echo "Restoring Micro-Manager autostart...";
+
 mkdir macros/AutoRun
-echo "run(\"Micro-Manager Studio\")" > macros/AutoRun/MicroManagerStudio.ijm
-
-echo "Creating OpenSPIM autostart...";
-cat > MMStartup.bsh <<EOF
-
-import org.micromanager.utils.ReportingUtils;
-import org.micromanager.MMStudioMainFrame;
-import org.micromanager.PluginLoader;
-import spim.SPIMAcquisition;
-
-new Thread(
-	new Runnable() {
-		public void run() {
-			total: while (!Thread.interrupted()) try {
-				if (MMStudioMainFrame.getInstance() != null && MMStudioMainFrame.getInstance().getCore() != null) {
-					for (MenuElement el : MMStudioMainFrame.getInstance().getJMenuBar().getSubElements()) {
-						if (el instanceof JMenu && ((JMenu) el).getText().equals("Plugins")) {
-							for (MenuElement subel : el.getSubElements()) {
-								if(subel instanceof JPopupMenu) {
-									for (MenuElement subsubel : subel.getSubElements()) {
-										if (subsubel instanceof JMenuItem && ((JMenuItem) subsubel).getText().equals(PluginLoader.getNameForPluginClass(SPIMAcquisition.class))) {
-											subsubel.doClick();
-											ReportingUtils.logMessage("SPIMAcquisition plugin started automatically.");
-											return;
-										}
-									}
-								}
-							}
-						}
-					}
-				}
-
-				Thread.sleep(1000);
-			} catch(InterruptedException ie) {
-				ReportingUtils.logError(ie, "SPIMAcquisition Autostart Thread was interrupted. Quitting.");
-			}
-		}
-	},
-	"SPIMAcquisition Autostart Thread"
-).start();
-
-EOF
+cat > macros/AutoRun/MicroManagerStudio.ijm <<"BLOCK"
+run("Micro-Manager Studio")
+wait(8000)
+call("spim.SPIMAcquisition.checkAutoStartScript")
+BLOCK
 
 echo "Cleaning up installer..."
 

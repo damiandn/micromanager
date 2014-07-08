@@ -172,7 +172,62 @@ public class SPIMAcquisition implements MMPlugin, ItemListener, ActionListener {
 	 */
 	public static String menuName = "Acquire SPIM image";
 	public static String tooltipDescription = "The OpenSPIM GUI";
-	
+
+	private static final String AUTOSTART_HEADER = "// SPIM Acquisition Autostart Code";
+	public static void checkAutoStartScript() {
+		final File script = new File("MMStartup.bsh"); // TODO: Attach this to an absolute path; IJ directory?
+
+		final String msg, fileContents;
+		try {
+			if(script.exists()) {
+				// Assignment intentional.
+				java.util.Scanner scanner = new java.util.Scanner(script).useDelimiter("\\Z");
+				if((fileContents = scanner.next()).startsWith(AUTOSTART_HEADER))
+					return;
+
+				scanner.close();
+				msg = "Your autostart file exists; attach OpenSPIM startup code?";
+			} else {
+				fileContents = "";
+				msg = "Start SPIM Acquisition plugin automatically on startup?";
+			}
+		} catch(java.io.FileNotFoundException fnfe) {
+			return;
+		}
+
+		java.io.InputStreamReader template;
+		java.io.OutputStreamWriter out;
+		try {
+			if(JOptionPane.showConfirmDialog(null, msg) != JOptionPane.YES_OPTION)
+				return;
+
+			if(script.exists())
+				if(!script.delete())
+					throw new java.io.IOException("Couldn't rewrite autostart script file.");
+
+			template = new java.io.InputStreamReader(SPIMAcquisition.class.getResourceAsStream("/MMStartup.bsh"));
+			out = new java.io.OutputStreamWriter(new java.io.FileOutputStream(script));
+
+			out.write(AUTOSTART_HEADER);
+			out.write("\n\n");
+			char buffer[] = new char[8192];
+			int read = 0;
+			while((read = template.read(buffer)) != -1)
+				out.write(buffer, 0, read);
+
+			if(!fileContents.isEmpty()) {
+				out.write("\n\n// Original Autostart Code\n\n");
+				out.write(fileContents);
+			}
+
+			template.close();
+			out.close();
+		} catch(java.io.IOException ioe) {
+			ReportingUtils.logError(ioe, "Could not replace script file.");
+			JOptionPane.showMessageDialog(null, "An error occurred: " + ioe.getMessage());
+		}
+	}
+
 	/**
 	 * The main app calls this method to remove the module window
 	 */

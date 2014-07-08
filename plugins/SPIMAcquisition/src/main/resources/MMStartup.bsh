@@ -1,0 +1,37 @@
+
+import org.micromanager.utils.ReportingUtils;
+import org.micromanager.MMStudioMainFrame;
+import org.micromanager.PluginLoader;
+import spim.SPIMAcquisition;
+
+new Thread(
+	new Runnable() {
+		public void run() {
+			total: while (!Thread.interrupted()) try {
+				if (MMStudioMainFrame.getInstance() != null && MMStudioMainFrame.getInstance().getCore() != null) {
+					for (MenuElement el : MMStudioMainFrame.getInstance().getJMenuBar().getSubElements()) {
+						if (el instanceof JMenu && ((JMenu) el).getText().equals("Plugins")) {
+							for (MenuElement subel : el.getSubElements()) {
+								if(subel instanceof JPopupMenu) {
+									for (MenuElement subsubel : subel.getSubElements()) {
+										if (subsubel instanceof JMenuItem && ((JMenuItem) subsubel).getText().equals(PluginLoader.getNameForPluginClass(SPIMAcquisition.class))) {
+											subsubel.doClick();
+											ReportingUtils.logMessage("SPIMAcquisition plugin started automatically.");
+											return;
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+
+				Thread.sleep(1000);
+			} catch(InterruptedException ie) {
+				ReportingUtils.logError(ie, "SPIMAcquisition Autostart Thread was interrupted. Quitting.");
+			}
+		}
+	},
+	"SPIMAcquisition Autostart Thread"
+).start();
+
