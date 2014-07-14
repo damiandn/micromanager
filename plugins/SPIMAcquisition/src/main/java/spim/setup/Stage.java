@@ -52,6 +52,18 @@ public class Stage extends Device {
 	}
 
 	/**
+	 * Reset this stage's origin. All positions are referenced to the origin.
+	 * Not all stages support this command, though.
+	 */
+	public void setOrigin() {
+		try {
+			core.setOrigin(label);
+		} catch (Exception e) {
+			ReportingUtils.logError(e, "Couldn't set stage origin for " + label);
+		}
+	}
+
+	/**
 	 * Get the stage's velocity in um/s (preferably).
 	 * 
 	 * @return Stage's velocity in um/s.

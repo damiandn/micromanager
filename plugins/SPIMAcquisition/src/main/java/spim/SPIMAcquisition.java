@@ -455,6 +455,14 @@ public class SPIMAcquisition implements MMPlugin, ItemListener, ActionListener {
 			}
 		});
 
+		JButton zeroTwisterButton = new JButton("Reset Zero");
+		zeroTwisterButton.addActionListener(new ActionListener() {
+			@Override
+			public void actionPerformed(ActionEvent ae) {
+				setup.getThetaStage().setOrigin();
+			}
+		});
+
 		addLine(left, Justification.LEFT, "x:", xPosition, "y:", yPosition, "z:", zPosition, "angle:", rotation);
 		addLine(left, Justification.STRETCH, xSlider);
 		left.add(Box.createVerticalStrut(8));
@@ -463,6 +471,7 @@ public class SPIMAcquisition implements MMPlugin, ItemListener, ActionListener {
 		addLine(left, Justification.STRETCH, zSlider);
 		left.add(Box.createVerticalStrut(8));
 		addLine(left, Justification.STRETCH, rotationSlider);
+		addLine(left, Justification.STRETCH, zeroTwisterButton);
 
 		autoReplaceMMControls = new JCheckBox("SPIM Mouse Controls");
 		autoReplaceMMControls.addActionListener(new ActionListener() {
