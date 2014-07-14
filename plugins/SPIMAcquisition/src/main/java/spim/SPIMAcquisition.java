@@ -1113,6 +1113,18 @@ public class SPIMAcquisition implements MMPlugin, ItemListener, ActionListener {
 		step = stage != null ? stage.getStepSize() : step;
 		double def = stage != null ? stage.getPosition() : 0;
 
+		if(max < min)
+			min = max;
+
+		if(def < min || def > max) {
+			if(def < min)
+				def = min;
+			if(def > max)
+				def = max;
+
+			((Stage)setup.getDevice(dev)).setPosition(def);
+		}
+
 		SteppedSlider out = new SteppedSlider(dev.getText(), min, max, step, def, options) {
 			@Override
 			public void valueChanged() {
