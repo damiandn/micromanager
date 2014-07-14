@@ -22,21 +22,19 @@ public class GenericRotator extends Stage {
 	}
 
 	@Override
-	public double getVelocity() {
-		return 1.0D;
+	public void setPosition(double position) {
+		super.setPosition(super.getPosition() + reduce(reduce(position) - reduce(super.getPosition())));
 	}
 
 	@Override
-	public void setVelocity(double velocity) throws IllegalArgumentException {
-		if (velocity != 1.0D)
-			throw new IllegalArgumentException("Invalid rotator velocity " + velocity);
-
-		// nop
+	public double getPosition() {
+		return reduce(super.getPosition());
 	}
 
-	@Override
-	public Collection<Double> getAllowedVelocities() {
-		return Arrays.asList(1.0D);
+	private static double reduce(double r) {
+		double s = r > 0.0D ? 1.0D : -1.0D;
+
+		return ((r + s*180.0D) % 360.0D) - s*180.0D;
 	}
 
 	@Override
