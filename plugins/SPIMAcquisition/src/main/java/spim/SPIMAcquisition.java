@@ -61,6 +61,8 @@ import javax.swing.JTabbedPane;
 import javax.swing.JTable;
 import javax.swing.JTextField;
 import javax.swing.SpinnerNumberModel;
+import javax.swing.event.ChangeEvent;
+import javax.swing.event.ChangeListener;
 
 import mmcorej.CMMCore;
 import mmcorej.DeviceType;
@@ -464,12 +466,34 @@ public class SPIMAcquisition implements MMPlugin, ItemListener, ActionListener {
 			}
 		});
 
+		final JSpinner stepSmall = new JSpinner(new SpinnerNumberModel(motorStep, motorStep, motorStep*20, motorStep));
+		stepSmall.setPreferredSize(stepSmall.getPreferredSize());
+		final JSpinner stepLarge = new JSpinner(new SpinnerNumberModel(motorStep*10, motorStep*2, motorStep*100, motorStep));
+		stepLarge.setPreferredSize(stepLarge.getPreferredSize());
+
+		ChangeListener updateStepSizes = new ChangeListener() {
+			@Override
+			public void stateChanged(ChangeEvent ae) {
+				xSlider.setStepSizes((Double) stepSmall.getValue(), (Double) stepLarge.getValue());
+				ySlider.setStepSizes((Double) stepSmall.getValue(), (Double) stepLarge.getValue());
+				zSlider.setStepSizes((Double) stepSmall.getValue(), (Double) stepLarge.getValue());
+			}
+		};
+
+		stepSmall.addChangeListener(updateStepSizes);
+		stepSmall.setMinimumSize(new Dimension(64, stepSmall.getPreferredSize().height));
+		stepSmall.setMaximumSize(new Dimension(128, stepSmall.getPreferredSize().height));
+		stepLarge.addChangeListener(updateStepSizes);
+		stepLarge.setMinimumSize(new Dimension(64, stepLarge.getPreferredSize().height));
+		stepLarge.setMaximumSize(new Dimension(128, stepLarge.getPreferredSize().height));
+
 		addLine(left, Justification.LEFT, "x:", xPosition, "y:", yPosition, "z:", zPosition, "angle:", rotation);
 		addLine(left, Justification.STRETCH, xSlider);
 		left.add(Box.createVerticalStrut(8));
 		addLine(left, Justification.STRETCH, ySlider);
 		left.add(Box.createVerticalStrut(8));
 		addLine(left, Justification.STRETCH, zSlider);
+		addLine(left, Justification.STRETCH, Box.createHorizontalGlue(), "Small step: ", stepSmall, " Large step: ", stepLarge, Box.createHorizontalGlue());
 		left.add(Box.createVerticalStrut(8));
 		addLine(left, Justification.STRETCH, rotationSlider);
 		addLine(left, Justification.STRETCH, zeroTwisterButton);
@@ -684,7 +708,7 @@ public class SPIMAcquisition implements MMPlugin, ItemListener, ActionListener {
 
 		final JSpinner acqSliceRange = new JSpinner(new SpinnerNumberModel(zstep*50, zstep*-1000, zstep*1000, zstep));
 		acqSliceRange.setMaximumSize(acqSliceRange.getPreferredSize());
-		final JSpinner acqSliceStep = new JSpinner(new SpinnerNumberModel(zstep, zstep, zstep*100, zstep));
+		final JSpinner acqSliceStep = new JSpinner(new SpinnerNumberModel(zstep, zstep, zstep*1000, zstep));
 		acqSliceStep.setMaximumSize(acqSliceStep.getPreferredSize());
 
 		final JComboBox acqSliceVel = new JComboBox((setup.getZStage() != null ? setup.getZStage().getAllowedVelocities() : new LinkedList<Double>()).toArray());
@@ -853,7 +877,7 @@ public class SPIMAcquisition implements MMPlugin, ItemListener, ActionListener {
 		int deflp = (int) ((setup.getLaser() != null ? setup.getLaser().getPower() : 1) * 1000);
 		int maxlp = (int) ((setup.getLaser() != null ? setup.getLaser().getMaxPower() : 1) * 1000);
 
-		laserSlider = new SteppedSlider("Laser Power:", minlp, maxlp, 1, deflp, SteppedSlider.LABEL_LEFT | SteppedSlider.INCREMENT_BUTTONS) {
+		laserSlider = new SteppedSlider("Laser Power:", minlp, maxlp, 1, 10, deflp, SteppedSlider.LABEL_LEFT | SteppedSlider.INCREMENT_BUTTONS) {
 			@Override
 			public void valueChanged() {
 				try {
@@ -874,7 +898,7 @@ public class SPIMAcquisition implements MMPlugin, ItemListener, ActionListener {
 		};
 
 		// TODO: find out correct values
-		exposureSlider = new SteppedSlider("Exposure:", 10, 1000, 1, defExposure, SteppedSlider.LABEL_LEFT | SteppedSlider.INCREMENT_BUTTONS) {
+		exposureSlider = new SteppedSlider("Exposure:", 10, 1000, 1, 10, defExposure, SteppedSlider.LABEL_LEFT | SteppedSlider.INCREMENT_BUTTONS) {
 			@Override
 			public void valueChanged() {
 				try {
@@ -1135,7 +1159,7 @@ public class SPIMAcquisition implements MMPlugin, ItemListener, ActionListener {
 			((Stage)setup.getDevice(dev)).setPosition(def);
 		}
 
-		SteppedSlider out = new SteppedSlider(dev.getText(), min, max, step, def, options) {
+		SteppedSlider out = new SteppedSlider(dev.getText(), min, max, step, 10*step, def, options) {
 			@Override
 			public void valueChanged() {
 				if(setup.getDevice(dev) == null)

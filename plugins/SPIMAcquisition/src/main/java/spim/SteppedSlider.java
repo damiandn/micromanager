@@ -34,7 +34,7 @@ public abstract class SteppedSlider extends JPanel implements ActionListener, Ch
 	public final static int CLAMP_VALUE = 16;
 	public final static int ALL = LABEL_LEFT | INCREMENT_BUTTONS | RANGE_LIMITS | PLACE_VALUE_BOX | CLAMP_VALUE;
 
-	private double min, max, step, value;
+	private double min, max, step, largeStep, value;
 	private double normalMin, normalMax;
 
 	private JLabel titleLabel, toLabel;
@@ -44,19 +44,20 @@ public abstract class SteppedSlider extends JPanel implements ActionListener, Ch
 	private JButton decrement, increment;
 	private int options;
 
-	public SteppedSlider(String label, double min, double max, double step, double current, int options) {
+	public SteppedSlider(String label, double min, double max, double step, double largeStep, double current, int options) {
 		this.min = normalMin = min;
 		this.max = normalMax = max;
 		this.step = step;
+		this.largeStep = largeStep;
 		this.value = current;
 		this.options = options;
 
 		if ((options & INCREMENT_BUTTONS) != 0) {
 			decrement = new JButton("-");
-			decrement.setToolTipText("Shift+Click to decrement by " + 10 * step);
+			decrement.setToolTipText("Shift+Click to decrement by " + largeStep);
 			decrement.addActionListener(this);
 			increment = new JButton("+");
-			increment.setToolTipText("Shift+Click to increment by " + 10 * step);
+			increment.setToolTipText("Shift+Click to increment by " + largeStep);
 			increment.addActionListener(this);
 		}
 
@@ -201,6 +202,18 @@ public abstract class SteppedSlider extends JPanel implements ActionListener, Ch
 		return max;
 	}
 
+	public void setStepSizes(double step, double largeStep) {
+		this.step = step;
+		this.largeStep = largeStep;
+
+		if(decrement != null && increment != null) {
+			decrement.setToolTipText("Shift+Click to decrement by " + largeStep);
+			increment.setToolTipText("Shift+Click to increment by " + largeStep);
+		}
+
+		rangeChanged();
+	}
+
 	public JTextField getValueBox() {
 		return valueBox;
 	}
@@ -231,10 +244,11 @@ public abstract class SteppedSlider extends JPanel implements ActionListener, Ch
 
 	@Override
 	public void actionPerformed(ActionEvent ae) {
-		double delta = (increment == ae.getSource() ? step : -step);
-
+		final double delta;
 		if ((ae.getModifiers() & ActionEvent.SHIFT_MASK) != 0)
-			delta *= 10;
+			delta = (increment == ae.getSource() ? largeStep : -largeStep);
+		else
+			delta = (increment == ae.getSource() ? step : -step);
 
 		double value = getValue() + delta;
 
