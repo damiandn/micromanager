@@ -38,13 +38,15 @@ public class OMETIFFHandler implements AcqOutputHandler {
 	private int stacks, timesteps;
 	private int planeCounter;
 	private double deltat;
+	private String tag;
 
-	public OMETIFFHandler(SPIMSetup setup, File outDir, AcqRow[] acqRows,
+	public OMETIFFHandler(String dataTag, SPIMSetup setup, File outDir, AcqRow[] acqRows,
 			int iTimeSteps, double iDeltaT) {
 
 		if(outDir == null || !outDir.exists() || !outDir.isDirectory())
 			throw new IllegalArgumentException("Null path specified: " + outDir.toString());
 
+		tag = dataTag;
 		stacks = acqRows.length;
 		core = setup.getCore();
 		timesteps = iTimeSteps;
@@ -119,13 +121,13 @@ public class OMETIFFHandler implements AcqOutputHandler {
 					meta.setTiffDataFirstT(new NonNegativeInteger(t), image, 0);
 					meta.setTiffDataPlaneCount(new NonNegativeInteger(1), image, 0); // Needs to get updated later.
 
-					String fileName = makeFilename(view, t);
+					String fileName = makeFilename(tag, view, t);
 					meta.setUUIDFileName(fileName, image, 0);
 					meta.setUUIDValue(UUID.randomUUID().toString(), view, 0);
 				}
 			}
 
-			writer = new ImageWriter().getWriter(makeFilename(0, 0));
+			writer = new ImageWriter().getWriter(makeFilename(tag, 0, 0));
 
 			writer.setWriteSequentially(true);
 			writer.setMetadataRetrieve(meta);
@@ -138,8 +140,8 @@ public class OMETIFFHandler implements AcqOutputHandler {
 		}
 	}
 
-	private static String makeFilename(int view, int timepoint) {
-		return String.format("spim_TL%02d_Angle%01d.ome.tiff", (timepoint + 1), view);
+	private static String makeFilename(String tag, int view, int timepoint) {
+		return String.format("%s_TL%02d_Angle%01d.ome.tiff", tag, (timepoint + 1), view);
 	}
 
 	private int image(int timepoint, int view) {

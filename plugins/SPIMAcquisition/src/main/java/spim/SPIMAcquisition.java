@@ -116,9 +116,10 @@ public class SPIMAcquisition implements MMPlugin, ItemListener, ActionListener {
 	private JCheckBox acqTimeoutCB;
 	private JTextField acqTimeoutValBox;
 	private JTextField acqSaveDir;
+	private JTextField acqDataTag;
 	private JButton acqGoBtn;
 	private Thread acqThread;
-	
+
 	private SPIMCalibrator calibration;
 
 	// TODO: read these from the properties
@@ -964,7 +965,7 @@ public class SPIMAcquisition implements MMPlugin, ItemListener, ActionListener {
 		addLine(right, Justification.RIGHT, "Laser power (mW):", laserPower, "Exposure (ms):", exposure);
 		addLine(right, Justification.STRETCH, laserSlider);
 		addLine(right, Justification.STRETCH, exposureSlider);
-		addLine(right, Justification.RIGHT, speedControl, antiDriftCheckbox, liveCheckbox, laseStackCheckbox);
+		addLine(right, Justification.RIGHT, "Data tag:", acqDataTag = new JTextField("spim", 16), speedControl, antiDriftCheckbox, liveCheckbox, laseStackCheckbox);
 		addLine(right, Justification.RIGHT, "Output directory:", acqSaveDir, pickDirBtn, asyncCheckbox);
 
 		JPanel bottom = new JPanel();
@@ -1823,7 +1824,7 @@ public class SPIMAcquisition implements MMPlugin, ItemListener, ActionListener {
 					}
 
 					AcqOutputHandler handler = new OMETIFFHandler(
-						setup, output, acqRows, timeSeqs, timeStep
+						acqDataTag.getText(), setup, output, acqRows, timeSeqs, timeStep
 					);
 					if(asyncCheckbox.isSelected()) try {
 						handler = new AsyncOutputWrapper(output, handler, (Double) asyncMemQuota.getValue(), (Double) asyncDiskQuota.getValue(), 1.0 - (Double) asyncGCRatio.getValue(), asyncMonitorCheckbox.isSelected());
