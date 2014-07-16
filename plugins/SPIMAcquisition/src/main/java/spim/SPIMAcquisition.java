@@ -794,14 +794,16 @@ public class SPIMAcquisition implements MMPlugin, ItemListener, ActionListener {
 		acqPositionsTable.addMouseListener(new MouseAdapter() {
 			@Override
 			public void mouseClicked(MouseEvent me) {
-				if(acqPositionsTable.getSelectedRowCount() == 1 &&
-						me.getClickCount() == 2) {
-					StepTableModel mdl = (StepTableModel)((JTable)me.getComponent()).getModel();
-					int rowidx = ((JTable)me.getComponent()).getSelectedRow();
-					AcqRow row = mdl.getRows().get(rowidx);
+				if(me.getClickCount() == 2)
+					goToSelectedRow.run();
+			}
+		});
 
-					setup.setPosition(row.getX(), row.getY(), row.getZStartPosition(), row.getTheta());
-				}
+		JButton goToButton = new JButton("Go To");
+		goToButton.addActionListener(new ActionListener() {
+			@Override
+			public void actionPerformed(ActionEvent ae) {
+				goToSelectedRow.run();
 			}
 		});
 
@@ -839,12 +841,14 @@ public class SPIMAcquisition implements MMPlugin, ItemListener, ActionListener {
 		outer.setLayout(new BoxLayout(outer, BoxLayout.PAGE_AXIS));
 
 		JPanel controls = new JPanel();
-		controls.setLayout(new GridLayout(9,1));
+		controls.setLayout(new GridLayout(11,1));
 
 		controls.add(acqMarkPos);
 		controls.add(acqRemovePos);
 		controls.add(acqMakeSlices);
 		controls.add(sliceOpts);
+		controls.add(Box.createGlue());
+		controls.add(goToButton);
 		controls.add(Box.createGlue());
 		controls.add(moveTop);
 		controls.add(moveUp);
@@ -1314,6 +1318,17 @@ public class SPIMAcquisition implements MMPlugin, ItemListener, ActionListener {
 
 			target.setMinMax(min, max);
 		};
+	};
+
+	protected Runnable goToSelectedRow = new Runnable() {
+		@Override
+		public void run() {
+			if(acqPositionsTable.getSelectedRowCount() == 1) {
+				StepTableModel mdl = (StepTableModel)(acqPositionsTable.getModel());
+				AcqRow row = mdl.getRows().get(acqPositionsTable.getSelectedRow());
+				setup.setPosition(row.getX(), row.getY(), row.getZStartPosition(), row.getTheta());
+			}
+		}
 	};
 
 	protected void updateUI() {
