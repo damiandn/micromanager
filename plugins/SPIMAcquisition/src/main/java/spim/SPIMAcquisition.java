@@ -810,16 +810,46 @@ public class SPIMAcquisition implements MMPlugin, ItemListener, ActionListener {
 
 		acqTableTab.add(tblScroller);
 
+		class DeltaListener implements ActionListener {
+			private final int delta;
+
+			public DeltaListener(int delta) {
+				this.delta = delta;
+			}
+
+			@Override
+			public void actionPerformed(ActionEvent ae) {
+				int[] newidxs = ((StepTableModel)acqPositionsTable.getModel()).move(acqPositionsTable.getSelectedRows(), delta);
+				acqPositionsTable.clearSelection();
+				for(int idx : newidxs)
+					acqPositionsTable.getSelectionModel().addSelectionInterval(idx, idx);
+			}
+		}
+
+		JButton moveTop = new JButton("To Top");
+		moveTop.addActionListener(new DeltaListener(-Short.MAX_VALUE));
+		JButton moveUp = new JButton("Move Up");
+		moveUp.addActionListener(new DeltaListener(-1));
+		JButton moveDown = new JButton("Move Down");
+		moveDown.addActionListener(new DeltaListener(1));
+		JButton moveBottom = new JButton("To Bottom");
+		moveBottom.addActionListener(new DeltaListener(Short.MAX_VALUE));
+
 		JPanel outer = new JPanel();
 		outer.setLayout(new BoxLayout(outer, BoxLayout.PAGE_AXIS));
 
 		JPanel controls = new JPanel();
-		controls.setLayout(new GridLayout(4,1));
+		controls.setLayout(new GridLayout(9,1));
 
 		controls.add(acqMarkPos);
 		controls.add(acqRemovePos);
 		controls.add(acqMakeSlices);
 		controls.add(sliceOpts);
+		controls.add(Box.createGlue());
+		controls.add(moveTop);
+		controls.add(moveUp);
+		controls.add(moveDown);
+		controls.add(moveBottom);
 
 		controls.setMaximumSize(controls.getPreferredSize());
 

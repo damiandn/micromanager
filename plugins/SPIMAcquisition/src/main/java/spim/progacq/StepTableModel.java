@@ -5,7 +5,8 @@ package spim.progacq;
 
 import java.text.ParseException;
 import java.util.Iterator;
-import java.util.Vector;
+import java.util.List;
+import java.util.ArrayList;
 
 import javax.swing.table.AbstractTableModel;
 
@@ -20,13 +21,13 @@ public class StepTableModel extends AbstractTableModel implements
 	private static final long serialVersionUID = -7369997010095627461L;
 
 	private SPIMDevice[] devices;
-	private Vector<AcqRow> data;
+	private ArrayList<AcqRow> data;
 
 	public StepTableModel(SPIMDevice... devices) {
 		super();
 
 		this.devices = devices;
-		data = new Vector<AcqRow>();
+		data = new ArrayList<AcqRow>();
 	}
 
 	/*
@@ -53,7 +54,7 @@ public class StepTableModel extends AbstractTableModel implements
 		return devices;
 	}
 
-	public Vector<AcqRow> getRows() {
+	public List<AcqRow> getRows() {
 		return data;
 	}
 
@@ -95,11 +96,7 @@ public class StepTableModel extends AbstractTableModel implements
 		if (values.length != devices.length)
 			throw new Error("Wrong colum count, silly!");
 
-		String[] fixed = new String[values.length];
-		for (int i = 0; i < values.length; ++i)
-			fixed[i] = values[i].toString();
-
-		data.add(index, new AcqRow(devices, fixed));
+		data.add(index, new AcqRow(devices, values));
 
 		this.fireTableDataChanged();
 	}
@@ -129,5 +126,28 @@ public class StepTableModel extends AbstractTableModel implements
 	@Override
 	public void setValueAt(Object aValue, int rowIndex, int columnIndex) {
 		throw new UnsupportedOperationException();
+	}
+
+	public int[] move(int[] idxs, int delta) {
+		if(delta == 0)
+			return idxs;
+
+		// Make sure we don't go off the end of the array.
+		if(idxs[idxs.length - 1] + delta >= data.size()) {
+			delta = data.size() - idxs[idxs.length - 1] - 1;
+		} else if(idxs[0] + delta < 0) {
+			delta = -idxs[0];
+		}
+
+		// This is a bit abstruse, but it basically loops forward for delta < 0 and backward for delta > 0.
+		for(int i = (delta < 0 ? 0 : (idxs.length - 1)); delta < 0 ? (i < idxs.length) : (i >= 0); i += (delta < 0 ? 1 : -1))
+		{
+			data.add(idxs[i] + delta, data.remove(idxs[i]));
+			idxs[i] += delta;
+		}
+
+		this.fireTableDataChanged();
+
+		return idxs;
 	}
 };
