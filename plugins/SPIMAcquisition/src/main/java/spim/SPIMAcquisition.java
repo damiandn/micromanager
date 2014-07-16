@@ -60,6 +60,7 @@ import javax.swing.JSpinner;
 import javax.swing.JTabbedPane;
 import javax.swing.JTable;
 import javax.swing.JTextField;
+import javax.swing.JToggleButton;
 import javax.swing.SpinnerNumberModel;
 import javax.swing.event.ChangeEvent;
 import javax.swing.event.ChangeListener;
@@ -410,7 +411,7 @@ public class SPIMAcquisition implements MMPlugin, ItemListener, ActionListener {
 		ySlider = makeStageSlider(setup, SPIMDevice.STAGE_Y, motorMin, motorMax, smallStep, largeStep, STAGE_OPTIONS);
 		zSlider = makeStageSlider(setup, SPIMDevice.STAGE_Z, motorMin, motorMax, smallStep, largeStep, STAGE_OPTIONS);
 
-		final JButton homeBtn = new JButton("Home");
+		final JButton homeBtn = new JButton("Home Stage");
 		homeBtn.addActionListener(new ActionListener() {
 			@Override
 			public void actionPerformed(ActionEvent ae) {
@@ -446,6 +447,51 @@ public class SPIMAcquisition implements MMPlugin, ItemListener, ActionListener {
 		stepLarge.addChangeListener(updateStepSizes);
 		stepLarge.setMaximumSize(stepLarge.getPreferredSize());
 
+		final JToggleButton markStart = new JToggleButton("Mark Start");
+		double zstep = (setup.getZStage() != null ? setup.getZStage().getStepSize() : 1);
+		final JSpinner acqSliceStep = new JSpinner(new SpinnerNumberModel(zstep*2, zstep, zstep*1000, zstep));
+		acqSliceStep.setMaximumSize(acqSliceStep.getPreferredSize());
+		final JButton markEnd = new JButton("Mark End");
+		markEnd.setEnabled(false);
+
+		markStart.addItemListener(new ItemListener() {
+			@Override
+			public void itemStateChanged(ItemEvent ie) {
+				switch(ie.getStateChange()) {
+				case ItemEvent.SELECTED:
+					stackStartZ = setup.getZStage().getPosition();
+					markEnd.setEnabled(true);
+					break;
+				case ItemEvent.DESELECTED:
+					stackStartZ = null;
+					markEnd.setEnabled(false);
+					break;
+				}
+			}
+		});
+
+		markEnd.addActionListener(new ActionListener() {
+			@Override
+			public void actionPerformed(ActionEvent ae) {
+				StepTableModel model = (StepTableModel)acqPositionsTable.getModel();
+
+				int idx = model.getRowCount();
+
+				int[] selectedRows = acqPositionsTable.getSelectedRows();
+				if(selectedRows.length > 0)
+					idx = selectedRows[selectedRows.length - 1];
+
+				Vector3D xyz = setup.getPosition();
+				double theta = setup.getAngle();
+
+				model.insertRow(idx, new AcqRow(xyz.getX(), xyz.getY(), stackStartZ, xyz.getZ(), (Double) acqSliceStep.getValue(), false, theta));
+
+				stackStartZ = null;
+				markEnd.setEnabled(false);
+				markStart.setSelected(false);
+			}
+		});
+
 		rotationSlider = makeStageSlider(setup, SPIMDevice.STAGE_THETA, twisterMin, twisterMax, twisterStep, 10*twisterStep, SteppedSlider.INCREMENT_BUTTONS);
 
 		JButton zeroTwisterButton = new JButton("Reset Zero");
@@ -462,7 +508,7 @@ public class SPIMAcquisition implements MMPlugin, ItemListener, ActionListener {
 		addLine(stages, Justification.STRETCH, ySlider);
 		stages.add(Box.createVerticalStrut(8));
 		addLine(stages, Justification.STRETCH, zSlider);
-		addLine(stages, Justification.STRETCH, Box.createHorizontalGlue(), homeBtn, " Small step: ", stepSmall, " Large step: ", stepLarge, Box.createHorizontalGlue());
+		addLine(stages, Justification.STRETCH, Box.createHorizontalGlue(), "+/-: ", stepSmall, " Shift+/-: ", stepLarge, " ", homeBtn, " Easy Stack: ", markStart, " Step size: ", acqSliceStep, " ", markEnd, Box.createHorizontalGlue());
 		stages.add(Box.createVerticalStrut(8));
 		addLine(stages, Justification.STRETCH, rotationSlider);
 		addLine(stages, Justification.STRETCH, zeroTwisterButton);
