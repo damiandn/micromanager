@@ -487,27 +487,7 @@ public class SPIMAcquisition implements MMPlugin, ItemListener, ActionListener {
 		stepLarge.setMinimumSize(new Dimension(64, stepLarge.getPreferredSize().height));
 		stepLarge.setMaximumSize(new Dimension(128, stepLarge.getPreferredSize().height));
 
-		addLine(left, Justification.LEFT, "x:", xPosition, "y:", yPosition, "z:", zPosition, "angle:", rotation);
-		addLine(left, Justification.STRETCH, xSlider);
-		left.add(Box.createVerticalStrut(8));
-		addLine(left, Justification.STRETCH, ySlider);
-		left.add(Box.createVerticalStrut(8));
-		addLine(left, Justification.STRETCH, zSlider);
-		addLine(left, Justification.STRETCH, Box.createHorizontalGlue(), "Small step: ", stepSmall, " Large step: ", stepLarge, Box.createHorizontalGlue());
-		left.add(Box.createVerticalStrut(8));
-		addLine(left, Justification.STRETCH, rotationSlider);
-		addLine(left, Justification.STRETCH, zeroTwisterButton);
-
-		autoReplaceMMControls = new JCheckBox("SPIM Mouse Controls");
-		autoReplaceMMControls.addActionListener(new ActionListener() {
-			@Override
-			public void actionPerformed(ActionEvent ae) {
-				hookLiveControls(autoReplaceMMControls.isSelected());
-				autoReplaceMMControls.setSelected(listener.isAttached());
-			}
-		});
-
-		final JButton homeBtn = new JButton("Home 4-D Stage");
+		final JButton homeBtn = new JButton("Home");
 		homeBtn.addActionListener(new ActionListener() {
 			@Override
 			public void actionPerformed(ActionEvent ae) {
@@ -521,12 +501,32 @@ public class SPIMAcquisition implements MMPlugin, ItemListener, ActionListener {
 			}
 		});
 
+		addLine(left, Justification.LEFT, "x:", xPosition, "y:", yPosition, "z:", zPosition, "angle:", rotation);
+		addLine(left, Justification.STRETCH, xSlider);
+		left.add(Box.createVerticalStrut(8));
+		addLine(left, Justification.STRETCH, ySlider);
+		left.add(Box.createVerticalStrut(8));
+		addLine(left, Justification.STRETCH, zSlider);
+		addLine(left, Justification.STRETCH, Box.createHorizontalGlue(), homeBtn, " Small step: ", stepSmall, " Large step: ", stepLarge, Box.createHorizontalGlue());
+		left.add(Box.createVerticalStrut(8));
+		addLine(left, Justification.STRETCH, rotationSlider);
+		addLine(left, Justification.STRETCH, zeroTwisterButton);
+
+		autoReplaceMMControls = new JCheckBox("SPIM Mouse Controls");
+		autoReplaceMMControls.addActionListener(new ActionListener() {
+			@Override
+			public void actionPerformed(ActionEvent ae) {
+				hookLiveControls(autoReplaceMMControls.isSelected());
+				autoReplaceMMControls.setSelected(listener.isAttached());
+			}
+		});
+
 		JPanel stageControls = new JPanel();
 		stageControls.setName("Stage Controls");
 		stageControls.setLayout(new BoxLayout(stageControls, BoxLayout.PAGE_AXIS));
 		stageControls.add(left);
 		stageControls.add(Box.createVerticalStrut(200));
-		addLine(stageControls, Justification.RIGHT, autoReplaceMMControls, homeBtn, devMgrBtn, pixCalibBtn, calibrateButton);
+		addLine(stageControls, Justification.RIGHT, autoReplaceMMControls, devMgrBtn, pixCalibBtn, calibrateButton);
 
 		acqPosTabs = new JTabbedPane();
 		
@@ -946,7 +946,7 @@ public class SPIMAcquisition implements MMPlugin, ItemListener, ActionListener {
 		laserPower = laserSlider.getValueBox();
 		exposure = exposureSlider.getValueBox();
 
-		liveCheckbox = new JCheckBox("Update Live View");
+		liveCheckbox = new JCheckBox("Update Live View", true);
 		updateLiveImage = gui.isLiveModeOn();
 		liveCheckbox.setSelected(updateLiveImage);
 		liveCheckbox.addItemListener(new ItemListener() {
