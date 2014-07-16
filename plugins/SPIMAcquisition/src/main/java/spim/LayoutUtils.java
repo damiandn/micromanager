@@ -20,36 +20,60 @@ public class LayoutUtils {
 	}
 
 	public static JPanel vertPanel(Component... parts) {
-		JPanel panel = new JPanel();
-		panel.setLayout(new BoxLayout(panel, BoxLayout.PAGE_AXIS));
-		
-		return addAll(panel, parts);
+		return vertPanel(0, parts);
 	}
 
 	public static JPanel horizPanel(Component... parts) {
-		JPanel panel = new JPanel();
-		panel.setLayout(new BoxLayout(panel, BoxLayout.LINE_AXIS));
-		
-		return addAll(panel, parts);
+		return horizPanel(0, parts);
 	}
 
 	public static JPanel vertPanel(String title, Component... parts) {
-		JPanel panel = new JPanel();
-		panel.setLayout(new BoxLayout(panel, BoxLayout.PAGE_AXIS));
-		
-		return addAll(titled(title, panel), parts);
+		return vertPanel(title, 0, parts);
 	}
 
 	public static JPanel horizPanel(String title, Component... parts) {
+		return horizPanel(title, 0, parts);
+	};
+
+	public static JPanel vertPanel(int gap, Component... parts) {
+		JPanel panel = new JPanel();
+		panel.setLayout(new BoxLayout(panel, BoxLayout.PAGE_AXIS));
+
+		return addAll(panel, gap, parts);
+	}
+
+	public static JPanel horizPanel(int gap, Component... parts) {
 		JPanel panel = new JPanel();
 		panel.setLayout(new BoxLayout(panel, BoxLayout.LINE_AXIS));
-		
-		return addAll(titled(title, panel), parts);
+
+		return addAll(panel, gap, parts);
+	};
+
+	public static JPanel vertPanel(String title, int gap, Component... parts) {
+		JPanel panel = new JPanel();
+		panel.setLayout(new BoxLayout(panel, BoxLayout.PAGE_AXIS));
+
+		return addAll(titled(title, panel), gap, parts);
+	}
+
+	public static JPanel horizPanel(String title, int gap, Component... parts) {
+		JPanel panel = new JPanel();
+		panel.setLayout(new BoxLayout(panel, BoxLayout.LINE_AXIS));
+
+		return addAll(titled(title, panel), gap, parts);
 	};
 
 	public static <T extends Container> T addAll(T to, Component... parts) {
-		for(Component c : parts)
+		return addAll(to, 0, parts);
+	}
+
+	public static <T extends Container> T addAll(T to, int gap, Component... parts) {
+		for(Component c : parts) {
 			to.add(c);
+
+			if(gap > 0)
+				to.add(Box.createRigidArea(new Dimension(gap, gap)));
+		}
 
 		return to;
 	}

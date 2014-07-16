@@ -7,7 +7,6 @@ import ij.gui.GenericDialog;
 import ij.gui.ImageWindow;
 import ij.process.ImageProcessor;
 
-import java.awt.CardLayout;
 import java.awt.Component;
 import java.awt.Container;
 import java.awt.Dimension;
@@ -45,7 +44,8 @@ import java.util.prefs.Preferences;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
-import javax.swing.DefaultComboBoxModel;
+import javax.swing.GroupLayout;
+import javax.swing.GroupLayout.Alignment;
 import javax.swing.JButton;
 import javax.swing.JCheckBox;
 import javax.swing.JComboBox;
@@ -65,7 +65,6 @@ import javax.swing.event.ChangeEvent;
 import javax.swing.event.ChangeListener;
 
 import mmcorej.CMMCore;
-import mmcorej.DeviceType;
 
 import org.apache.commons.math3.geometry.euclidean.threed.Rotation;
 import org.apache.commons.math3.geometry.euclidean.threed.Vector3D;
@@ -103,14 +102,11 @@ public class SPIMAcquisition implements MMPlugin, ItemListener, ActionListener {
 	private JSpinner acqFetchDelta;
 	private JButton acqFetchT;
 	private JCheckBox acqXYDevCB;
-	private JComboBox acqXYDevCmbo;
 	private RangeSlider acqRangeX;
 	private RangeSlider acqRangeY;
 	private JCheckBox acqZDevCB;
-	private JComboBox acqZDevCmbo;
 	private RangeSlider acqRangeZ;
 	private JCheckBox acqTDevCB;
-	private JComboBox acqTDevCmbo;
 	private RangeSlider acqRangeTheta;
 	private JCheckBox acqTimeCB;
 	private JTextField acqStepBox;
@@ -124,10 +120,9 @@ public class SPIMAcquisition implements MMPlugin, ItemListener, ActionListener {
 
 	private SPIMCalibrator calibration;
 
-	// TODO: read these from the properties
 	protected double motorMin = 0, motorMax = 9000, motorStep = 1.5,
 		twisterMin = -180, twisterMax = 180, twisterStep = 2;
-	protected static int STAGE_OPTIONS = SteppedSlider.INCREMENT_BUTTONS | SteppedSlider.CLAMP_VALUE | SteppedSlider.RANGE_LIMITS;
+	protected final static int STAGE_OPTIONS = SteppedSlider.INCREMENT_BUTTONS | SteppedSlider.CLAMP_VALUE | SteppedSlider.RANGE_LIMITS;
 
 	protected ScriptInterface app;
 	protected CMMCore mmc;
@@ -138,7 +133,6 @@ public class SPIMAcquisition implements MMPlugin, ItemListener, ActionListener {
 
 	protected JFrame frame;
 	protected JSpinner settleTime;
-	protected JTextField xPosition, yPosition, zPosition, rotation, laserPower, exposure;
 	protected SteppedSlider xSlider, ySlider, zSlider, rotationSlider, laserSlider, exposureSlider;
 	protected JCheckBox liveCheckbox, registrationCheckbox, continuousCheckbox;
 	protected JButton speedControl, ohSnap;
@@ -146,7 +140,7 @@ public class SPIMAcquisition implements MMPlugin, ItemListener, ActionListener {
 	protected JCheckBox asyncMonitorCheckbox, acqProfileCheckbox;
 	protected JSpinner asyncMemQuota, asyncDiskQuota, asyncGCRatio;
 
-	protected boolean updateLiveImage;
+	protected Double stackStartZ;
 
 	private static Preferences prefs;
 
@@ -330,36 +324,6 @@ public class SPIMAcquisition implements MMPlugin, ItemListener, ActionListener {
 	 * information it needs from the MMCore.
 	 */
 	public void configurationChanged() {
-/*		zStageLabel = null;
-		xyStageLabel = null;
-		twisterLabel = null;
-
-		for (String label : mmc.getLoadedDevices().toArray()) try {
-			String driver = mmc.getDeviceName(label);
-			if (driver.equals("Picard Twister"))
-				twisterLabel = label;
-			else if (driver.equals("Picard Z Stage")) { // TODO: read this from the to-be-added property
-				zStageLabel = label;
-				zStageHasVelocity = mmc.hasProperty(zStageLabel, "Velocity");
-			}
-			else if (driver.equals("Picard XY Stage"))
-				xyStageLabel = label;
-			else if (driver.equals("CoherentCube"))
-				laserLabel = label;
-			// testing
-			else if (driver.equals("DStage")) {
-				if (label.equals("DStage"))
-					zStageLabel = label;
-				else
-					twisterLabel = label;
-			}
-			else if (driver.equals("DXYStage"))
-				xyStageLabel = label;
-		} catch (Exception e) {
-			IJ.handleException(e);
-		}
-		cameraLabel = mmc.getCameraDevice();*/
-
 		updateUI();
 	}
 
@@ -401,27 +365,137 @@ public class SPIMAcquisition implements MMPlugin, ItemListener, ActionListener {
 
 	// UI stuff
 
-	@SuppressWarnings("serial")
 	protected void initUI() {
 		if (frame != null)
 			return;
 		frame = new JFrame("OpenSPIM");
 
-		JPanel left = new JPanel();
-		left.setLayout(new BoxLayout(left, BoxLayout.PAGE_AXIS));
-		left.setBorder(BorderFactory.createTitledBorder("Position/Angle"));
+		JTabbedPane tabs = new JTabbedPane();
+		tabs.add("Stage Controls", createStageControlsTab());
+		tabs.add("Acquisition", createAcquisitionTab());
 
-		xSlider = makeStageSlider(setup, SPIMDevice.STAGE_X, motorMin, motorMax, motorStep, STAGE_OPTIONS);
-		xPosition = xSlider.getValueBox();
+		frame.add(tabs);
+		frame.pack();
 
-		ySlider = makeStageSlider(setup, SPIMDevice.STAGE_Y, motorMin, motorMax, motorStep, STAGE_OPTIONS);
-		yPosition = ySlider.getValueBox();
+		frame.addWindowFocusListener(new WindowAdapter() {
+			@Override
+			public void windowGainedFocus(WindowEvent e) {
+				tryUpdateSliderPositions();
+			}
+		});
 
-		zSlider = makeStageSlider(setup, SPIMDevice.STAGE_Z, motorMin, motorMax, motorStep, STAGE_OPTIONS);
-		zPosition = zSlider.getValueBox();
+		timer = new java.util.Timer(true);
 
-		rotationSlider = makeStageSlider(setup, SPIMDevice.STAGE_THETA, twisterMin, twisterMax, twisterStep, SteppedSlider.INCREMENT_BUTTONS);
-		rotation = rotationSlider.getValueBox();
+		timer.scheduleAtFixedRate(new TimerTask() {
+			@Override
+			public void run() {
+				try {
+					updateMotorPositions();
+					updateSizeEstimate();
+				} catch (Exception e) {
+					ReportingUtils.logError(e);
+				}
+			}
+		}, 0, MOTORS_UPDATE_PERIOD);
+	}
+
+	private Component createStageControlsTab() {
+		Box stages = Box.createVerticalBox();
+		stages.setBorder(BorderFactory.createTitledBorder("Position/Angle"));
+
+		double smallStep = prefsGet("motor-step-small", motorStep);
+		double largeStep = prefsGet("motor-step-large", motorStep*10);
+
+		xSlider = makeStageSlider(setup, SPIMDevice.STAGE_X, motorMin, motorMax, smallStep, largeStep, STAGE_OPTIONS);
+		ySlider = makeStageSlider(setup, SPIMDevice.STAGE_Y, motorMin, motorMax, smallStep, largeStep, STAGE_OPTIONS);
+		zSlider = makeStageSlider(setup, SPIMDevice.STAGE_Z, motorMin, motorMax, smallStep, largeStep, STAGE_OPTIONS);
+
+		final JButton homeBtn = new JButton("Home");
+		homeBtn.addActionListener(new ActionListener() {
+			@Override
+			public void actionPerformed(ActionEvent ae) {
+				if(JOptionPane.showConfirmDialog(homeBtn, "Are you sure you want to home the motors?\n\nPlease remove any sample before doing so\nto prevent damage to the sample and/or lenses.") == JOptionPane.YES_OPTION)
+				{
+					SPIMSetup setup = SPIMAcquisition.this.setup;
+					setup.getXStage().home();
+					setup.getYStage().home();
+					setup.getZStage().home();
+				}
+			}
+		});
+
+		final JSpinner stepSmall = new JSpinner(new SpinnerNumberModel(smallStep, motorStep, motorStep*20, motorStep));
+		stepSmall.setPreferredSize(stepSmall.getPreferredSize());
+		final JSpinner stepLarge = new JSpinner(new SpinnerNumberModel(largeStep, motorStep*2, motorStep*100, motorStep));
+		stepLarge.setPreferredSize(stepLarge.getPreferredSize());
+
+		ChangeListener updateStepSizes = new ChangeListener() {
+			@Override
+			public void stateChanged(ChangeEvent ae) {
+				xSlider.setStepSizes((Double) stepSmall.getValue(), (Double) stepLarge.getValue());
+				ySlider.setStepSizes((Double) stepSmall.getValue(), (Double) stepLarge.getValue());
+				zSlider.setStepSizes((Double) stepSmall.getValue(), (Double) stepLarge.getValue());
+
+				prefsSet("motor-step-small", (Double) stepSmall.getValue());
+				prefsSet("motor-step-large", (Double) stepLarge.getValue());
+			}
+		};
+
+		stepSmall.addChangeListener(updateStepSizes);
+		stepSmall.setMaximumSize(stepSmall.getPreferredSize());
+		stepLarge.addChangeListener(updateStepSizes);
+		stepLarge.setMaximumSize(stepLarge.getPreferredSize());
+
+		rotationSlider = makeStageSlider(setup, SPIMDevice.STAGE_THETA, twisterMin, twisterMax, twisterStep, 10*twisterStep, SteppedSlider.INCREMENT_BUTTONS);
+
+		JButton zeroTwisterButton = new JButton("Reset Zero");
+		zeroTwisterButton.addActionListener(new ActionListener() {
+			@Override
+			public void actionPerformed(ActionEvent ae) {
+				setup.getThetaStage().setOrigin();
+			}
+		});
+
+		addLine(stages, Justification.LEFT, "x:", xSlider.getValueBox(), "y:", ySlider.getValueBox(), "z:", zSlider.getValueBox(), "angle:", rotationSlider.getValueBox());
+		addLine(stages, Justification.STRETCH, xSlider);
+		stages.add(Box.createVerticalStrut(8));
+		addLine(stages, Justification.STRETCH, ySlider);
+		stages.add(Box.createVerticalStrut(8));
+		addLine(stages, Justification.STRETCH, zSlider);
+		addLine(stages, Justification.STRETCH, Box.createHorizontalGlue(), homeBtn, " Small step: ", stepSmall, " Large step: ", stepLarge, Box.createHorizontalGlue());
+		stages.add(Box.createVerticalStrut(8));
+		addLine(stages, Justification.STRETCH, rotationSlider);
+		addLine(stages, Justification.STRETCH, zeroTwisterButton);
+
+		stages.setMaximumSize(new Dimension(Short.MAX_VALUE, stages.getPreferredSize().height));
+
+		autoReplaceMMControls = new JCheckBox("SPIM Mouse Controls");
+		autoReplaceMMControls.addActionListener(new ActionListener() {
+			@Override
+			public void actionPerformed(ActionEvent ae) {
+				hookLiveControls(autoReplaceMMControls.isSelected());
+				autoReplaceMMControls.setSelected(listener.isAttached());
+			}
+		});
+
+		JButton devMgrBtn = new JButton("Manage Devices");
+		devMgrBtn.addActionListener(new ActionListener() {
+			@Override
+			public void actionPerformed(ActionEvent ae) {
+				if(devMgr == null)
+					devMgr = new DeviceManager(setup);
+
+				devMgr.setVisible(true);
+			}
+		});
+
+		JButton pixCalibBtn = new JButton("Cal. Pix. Size");
+		pixCalibBtn.addActionListener(new ActionListener() {
+			@Override
+			public void actionPerformed(ActionEvent ae) {
+				(new PixelSizeCalibrator(mmc, gui)).setVisible(true);
+			}
+		});
 
 		JButton calibrateButton = new JButton("Calibrate...");
 		calibrateButton.addActionListener(new ActionListener() {
@@ -439,97 +513,247 @@ public class SPIMAcquisition implements MMPlugin, ItemListener, ActionListener {
 			};
 		});
 
-		JButton pixCalibBtn = new JButton("Cal. Pix. Size");
-		pixCalibBtn.addActionListener(new ActionListener() {
+		JPanel stageControls = LayoutUtils.vertPanel(
+			stages,
+			Box.createVerticalGlue(),
+			LayoutUtils.horizPanel(
+				Box.createHorizontalGlue(),
+				autoReplaceMMControls,
+				devMgrBtn,
+				pixCalibBtn,
+				calibrateButton
+			)
+		);
+		stageControls.setName("Stage Controls");
+
+		return stageControls;
+	}
+
+	@SuppressWarnings("serial")
+	private Component createAcquisitionTab() {
+		// Different sources of stage positioning for acquisition
+		acqPosTabs = new JTabbedPane();
+		acqPosTabs.add(SPIM_RANGES, createAcquisitionRangesTab());
+		acqPosTabs.add(POSITION_LIST, createAcquisitionPosListTab());
+		acqPosTabs.add(VIDEO_RECORDER, createAcquisitionVideoTab());
+
+		// Size estimation for acquisition
+		JPanel estimates = (JPanel)LayoutUtils.horizPanel(
+			estimatesText = new JLabel(" Estimates:"),
+			Box.createHorizontalGlue()
+		);
+
+		// Universal acquisition settings
+		Box acqSettings = Box.createVerticalBox();
+		acqSettings.setBorder(BorderFactory.createTitledBorder("Acquisition"));
+
+		int minlp = (int) ((setup.getLaser() != null ? setup.getLaser().getMinPower() : 0.001) * 1000);
+		int deflp = (int) ((setup.getLaser() != null ? setup.getLaser().getPower() : 1) * 1000);
+		int maxlp = (int) ((setup.getLaser() != null ? setup.getLaser().getMaxPower() : 1) * 1000);
+
+		laserSlider = new SteppedSlider("Laser Power:", minlp, maxlp, 1, 10, deflp, SteppedSlider.LABEL_LEFT | SteppedSlider.INCREMENT_BUTTONS) {
 			@Override
-			public void actionPerformed(ActionEvent ae) {
-				(new PixelSizeCalibrator(mmc, gui)).setVisible(true);
-			}
-		});
-
-		JButton devMgrBtn = new JButton("Manage Devices");
-		devMgrBtn.addActionListener(new ActionListener() {
-			@Override
-			public void actionPerformed(ActionEvent ae) {
-				if(devMgr == null)
-					devMgr = new DeviceManager(setup);
-
-				devMgr.setVisible(true);
-			}
-		});
-
-		JButton zeroTwisterButton = new JButton("Reset Zero");
-		zeroTwisterButton.addActionListener(new ActionListener() {
-			@Override
-			public void actionPerformed(ActionEvent ae) {
-				setup.getThetaStage().setOrigin();
-			}
-		});
-
-		final JSpinner stepSmall = new JSpinner(new SpinnerNumberModel(motorStep, motorStep, motorStep*20, motorStep));
-		stepSmall.setPreferredSize(stepSmall.getPreferredSize());
-		final JSpinner stepLarge = new JSpinner(new SpinnerNumberModel(motorStep*10, motorStep*2, motorStep*100, motorStep));
-		stepLarge.setPreferredSize(stepLarge.getPreferredSize());
-
-		ChangeListener updateStepSizes = new ChangeListener() {
-			@Override
-			public void stateChanged(ChangeEvent ae) {
-				xSlider.setStepSizes((Double) stepSmall.getValue(), (Double) stepLarge.getValue());
-				ySlider.setStepSizes((Double) stepSmall.getValue(), (Double) stepLarge.getValue());
-				zSlider.setStepSizes((Double) stepSmall.getValue(), (Double) stepLarge.getValue());
+			public void valueChanged() {
+				try {
+					setup.getLaser().setPower(getValue() / 1000D); // laser api is in W
+				} catch (UnsupportedOperationException uoe) {
+					laserSlider.setEnabled(false);
+				} catch (Exception e) {
+					ReportingUtils.logError(e);
+				}
 			}
 		};
 
-		stepSmall.addChangeListener(updateStepSizes);
-		stepSmall.setMinimumSize(new Dimension(64, stepSmall.getPreferredSize().height));
-		stepSmall.setMaximumSize(new Dimension(128, stepSmall.getPreferredSize().height));
-		stepLarge.addChangeListener(updateStepSizes);
-		stepLarge.setMinimumSize(new Dimension(64, stepLarge.getPreferredSize().height));
-		stepLarge.setMaximumSize(new Dimension(128, stepLarge.getPreferredSize().height));
+		double defExposure = 100;
+		try {
+			defExposure = Math.min(1000, Math.max(10, mmc.getExposure()));
+		} catch(Exception e) {
+			ReportingUtils.logError(e);
+		};
 
-		final JButton homeBtn = new JButton("Home");
-		homeBtn.addActionListener(new ActionListener() {
+		// TODO: find out correct values
+		exposureSlider = new SteppedSlider("Exposure:", 10, 1000, 1, 10, defExposure, SteppedSlider.LABEL_LEFT | SteppedSlider.INCREMENT_BUTTONS) {
 			@Override
-			public void actionPerformed(ActionEvent ae) {
-				if(JOptionPane.showConfirmDialog(homeBtn, "Are you sure you want to home the motors?\n\nPlease remove any sample before doing so\nto prevent damage to the sample and/or lenses.") == JOptionPane.YES_OPTION)
-				{
-					SPIMSetup setup = SPIMAcquisition.this.setup;
-					setup.getXStage().home();
-					setup.getYStage().home();
-					setup.getZStage().home();
+			public void valueChanged() {
+				try {
+					mmc.setExposure(getValue());
+				} catch (Exception e) {
+					IJ.handleException(e);
 				}
 			}
-		});
+		};
 
-		addLine(left, Justification.LEFT, "x:", xPosition, "y:", yPosition, "z:", zPosition, "angle:", rotation);
-		addLine(left, Justification.STRETCH, xSlider);
-		left.add(Box.createVerticalStrut(8));
-		addLine(left, Justification.STRETCH, ySlider);
-		left.add(Box.createVerticalStrut(8));
-		addLine(left, Justification.STRETCH, zSlider);
-		addLine(left, Justification.STRETCH, Box.createHorizontalGlue(), homeBtn, " Small step: ", stepSmall, " Large step: ", stepLarge, Box.createHorizontalGlue());
-		left.add(Box.createVerticalStrut(8));
-		addLine(left, Justification.STRETCH, rotationSlider);
-		addLine(left, Justification.STRETCH, zeroTwisterButton);
-
-		autoReplaceMMControls = new JCheckBox("SPIM Mouse Controls");
-		autoReplaceMMControls.addActionListener(new ActionListener() {
+		speedControl = new JButton("Set z-stage velocity");
+		speedControl.addActionListener(new ActionListener() {
 			@Override
-			public void actionPerformed(ActionEvent ae) {
-				hookLiveControls(autoReplaceMMControls.isSelected());
-				autoReplaceMMControls.setSelected(listener.isAttached());
+			public void actionPerformed(ActionEvent e) {
+				new Thread() {
+					public void run() {
+						setZStageVelocity();
+					}
+				}.start();
 			}
 		});
 
-		JPanel stageControls = new JPanel();
-		stageControls.setName("Stage Controls");
-		stageControls.setLayout(new BoxLayout(stageControls, BoxLayout.PAGE_AXIS));
-		stageControls.add(left);
-		stageControls.add(Box.createVerticalStrut(200));
-		addLine(stageControls, Justification.RIGHT, autoReplaceMMControls, devMgrBtn, pixCalibBtn, calibrateButton);
+		antiDriftCheckbox = new JCheckBox("Use Anti-Drift");
 
-		acqPosTabs = new JTabbedPane();
-		
+		liveCheckbox = new JCheckBox("Update Live View", true);
+		liveCheckbox.setSelected(gui.isLiveModeOn());
+
+		laseStackCheckbox = new JCheckBox("Lase Full Stack");
+		laseStackCheckbox.setSelected(false);
+		laseStackCheckbox.setEnabled(true);
+
+		acqSaveDir = new JTextField(48);
+		acqSaveDir.setEnabled(true);
+		acqSaveDir.setText(prefsGet("outputdir", ""));
+
+		final JButton pickDirBtn = new JButton("Browse");
+
+		pickDirBtn.addActionListener(new ActionListener() {
+			@Override
+			public void actionPerformed(ActionEvent ae) {
+				JFileChooser fc = new JFileChooser(acqSaveDir.getText());
+
+				fc.setFileSelectionMode(VIDEO_RECORDER.equals(acqPosTabs.getSelectedComponent().getName()) ?
+						JFileChooser.FILES_AND_DIRECTORIES : JFileChooser.DIRECTORIES_ONLY);
+
+				if(fc.showDialog(frame, "Select") == JFileChooser.APPROVE_OPTION) {
+					acqSaveDir.setText(fc.getSelectedFile().getAbsolutePath());
+					prefsSet("outputdir", acqSaveDir.getText());
+				}
+			};
+		});
+
+		asyncCheckbox = new JCheckBox("Asynchronous Output");
+		asyncCheckbox.setSelected(true);
+		asyncCheckbox.setEnabled(true);
+		asyncCheckbox.setToolTipText("If checked, captured images will be buffered and written as time permits. This speeds up acquisition. Currently only applies if an output directory is specified.");
+
+		// Timepoints and delay
+		acqTimeCB = new JCheckBox("");
+		acqTimeCB.addItemListener(this);
+
+		JLabel step = new JLabel("Interval (s):");
+		step.setToolTipText("Delay between acquisition sequences in milliseconds.");
+		acqStepBox = new JTextField(8);
+		acqStepBox.setMaximumSize(acqStepBox.getPreferredSize());
+
+		JLabel count = new JLabel("Count:");
+		count.setToolTipText("Number of acquisition sequences to perform.");
+		acqCountBox = new JTextField(8);
+		acqCountBox.setMaximumSize(acqCountBox.getPreferredSize());
+
+		// Device Timeout override
+		acqTimeoutCB = new JCheckBox("Override Timeout:");
+		acqTimeoutCB.setHorizontalTextPosition(JCheckBox.RIGHT);
+		acqTimeoutCB.addItemListener(this);
+
+		acqTimeoutValBox = new JTextField(8);
+		acqTimeoutValBox.setMaximumSize(acqTimeoutValBox.getPreferredSize());
+
+		// More options
+		settleTime = new JSpinner(new SpinnerNumberModel(10, 0, 1000, 1));
+
+		registrationCheckbox = new JCheckBox(/*"Perform SPIM registration"*/);
+		registrationCheckbox.setSelected(false);
+		registrationCheckbox.setEnabled(false);
+
+		asyncMonitorCheckbox = new JCheckBox(/*"Monitor Async Output"*/);
+		asyncMemQuota = new JSpinner(new SpinnerNumberModel(0.8, 0.0, 1.0, 0.05));
+		asyncDiskQuota = new JSpinner(new SpinnerNumberModel(0.9, 0.0, 1.0, 0.05));
+		asyncGCRatio = new JSpinner(new SpinnerNumberModel(0.5, 0.0, 1.0, 0.05));
+		acqProfileCheckbox = new JCheckBox(/*"Profile Acquisition"*/);
+		continuousCheckbox = new JCheckBox(/*"Snap Continously"*/);
+		continuousCheckbox.setSelected(false);
+		continuousCheckbox.setEnabled(false);
+
+		acqOptionsFrame = new JFrame("Acquisition Options");
+		JPanel optsPanel = LayoutUtils.form(
+				"Z settle time (ms):", settleTime,
+				"Continuous Mode:", continuousCheckbox,
+				"SPIM Registration:", registrationCheckbox,
+				"Monitor Async Output:", asyncMonitorCheckbox,
+				"\tMemory Quota:", asyncMemQuota,
+				"\tDisk Quota:", asyncDiskQuota,
+				"\tGC Aggression:", asyncGCRatio,
+				"Profile Acquisition:", acqProfileCheckbox
+		);
+		optsPanel.setBorder(BorderFactory.createEmptyBorder(4, 4, 4, 4));
+		acqOptionsFrame.add(optsPanel);
+		acqOptionsFrame.pack();
+
+		JButton showMoreOptions = new JButton("Show Dialog");
+		showMoreOptions.addActionListener(new ActionListener() {
+			@Override
+			public void actionPerformed(ActionEvent ae) {
+				Point screen = ((Component) ae.getSource()).getLocationOnScreen();
+				int w = ((Component) ae.getSource()).getWidth();
+				int h = ((Component) ae.getSource()).getHeight();
+				acqOptionsFrame.setVisible(true);
+				acqOptionsFrame.setLocation(screen.x + w/2 - acqOptionsFrame.getWidth()/2, screen.y + h);
+			}
+		});
+
+		JPanel goBtnPnl = new JPanel();
+		goBtnPnl.setLayout(new GridLayout(2,1));
+
+		acqGoBtn = new JButton(BTN_START);
+		acqGoBtn.addActionListener(this);
+		goBtnPnl.add(acqGoBtn);
+
+		acqProgress = new JProgressBar(0, 100);
+		acqProgress.setEnabled(false);
+		acqProgress.setStringPainted(true);
+		acqProgress.setString("Not Acquiring");
+		goBtnPnl.add(acqProgress);
+
+		acqTimeCB.setSelected(false);
+		acqCountBox.setEnabled(false);
+		acqStepBox.setEnabled(false);
+
+		acqTimeoutCB.setSelected(false);
+		acqTimeoutValBox.setEnabled(false);
+
+		JPanel acquisition = LayoutUtils.vertPanel(
+			acqPosTabs,
+			estimates,
+			LayoutUtils.vertPanel("Acquisition", 4,
+				LayoutUtils.horizPanel(4,
+					Box.createHorizontalGlue(),
+					new JLabel("Laser power (mW):"), laserSlider.getValueBox(),
+					Box.createRigidArea(new Dimension(4, 4)),
+					new JLabel("Exposure (ms):"), exposureSlider.getValueBox()
+				),
+				laserSlider,
+				exposureSlider,
+				LayoutUtils.horizPanel(4,
+					Box.createHorizontalGlue(),
+					new JLabel("Data tag:"), acqDataTag = new JTextField("spim", 16),
+					speedControl, antiDriftCheckbox, liveCheckbox, laseStackCheckbox
+				),
+				LayoutUtils.horizPanel(4,
+					Box.createHorizontalGlue(), new JLabel("Output directory:"), acqSaveDir, pickDirBtn, asyncCheckbox
+				),
+				LayoutUtils.horizPanel(4,
+					LayoutUtils.horizPanel("Time", acqTimeCB, step, acqStepBox, Box.createRigidArea(new Dimension(10, 4)), count, acqCountBox),
+					LayoutUtils.horizPanel("Device Timeout", acqTimeoutCB, acqTimeoutValBox),
+					LayoutUtils.horizPanel("More Options", showMoreOptions),
+					Box.createHorizontalGlue(),
+					goBtnPnl
+				)
+			)
+		);
+
+		acqDataTag.setMaximumSize(acqDataTag.getPreferredSize());
+		acqSaveDir.setMaximumSize(acqSaveDir.getPreferredSize());
+
+		acquisition.setName("Acquisition");
+
+		return acquisition;
+	}
+
+	protected Component createAcquisitionRangesTab() {
 		JPanel importer = new JPanel();
 		importer.setLayout(new BoxLayout(importer, BoxLayout.LINE_AXIS));
 
@@ -557,13 +781,9 @@ public class SPIMAcquisition implements MMPlugin, ItemListener, ActionListener {
 		acqXYDevCB.addItemListener(this);
 
 		JLabel xyDevLbl = new JLabel("X/Y Stage Device:");
-		acqXYDevCmbo = new JComboBox(mmc.getLoadedDevicesOfType(
-				DeviceType.XYStageDevice).toArray());
-		acqXYDevCmbo.setMaximumSize(acqXYDevCmbo.getPreferredSize());
 
 		xyDev.add(acqXYDevCB);
 		xyDev.add(xyDevLbl);
-		xyDev.add(acqXYDevCmbo);
 		xyDev.add(Box.createHorizontalGlue());
 
 		xy.add(xyDev);
@@ -605,14 +825,9 @@ public class SPIMAcquisition implements MMPlugin, ItemListener, ActionListener {
 		acqZDevCB = new JCheckBox("");
 		acqZDevCB.addItemListener(this);
 		JLabel zDevLbl = new JLabel("Z Stage Device:");
-		acqZDevCmbo = new JComboBox(mmc.getLoadedDevicesOfType(
-				DeviceType.StageDevice).toArray());
-		acqZDevCmbo.setSelectedItem(mmc.getFocusDevice());
-		acqZDevCmbo.setMaximumSize(acqZDevCmbo.getPreferredSize());
 
 		zDev.add(acqZDevCB);
 		zDev.add(zDevLbl);
-		zDev.add(acqZDevCmbo);
 		zDev.add(Box.createHorizontalGlue());
 
 		z.add(zDev);
@@ -634,16 +849,9 @@ public class SPIMAcquisition implements MMPlugin, ItemListener, ActionListener {
 		acqTDevCB = new JCheckBox("");
 		acqTDevCB.addItemListener(this);
 		JLabel tDevLbl = new JLabel("Theta Device:");
-		tDevLbl.setAlignmentX(Component.LEFT_ALIGNMENT);
-		acqTDevCmbo = new JComboBox(mmc.getLoadedDevicesOfType(
-				DeviceType.StageDevice).toArray());
-		acqTDevCmbo.setMaximumSize(acqTDevCmbo.getPreferredSize());
-		acqTDevCmbo.setSelectedIndex(acqTDevCmbo.getItemCount() - 1);
-		acqTDevCmbo.setAlignmentX(Component.LEFT_ALIGNMENT);
 
 		tDev.add(acqTDevCB);
 		tDev.add(tDevLbl);
-		tDev.add(acqTDevCmbo);
 		tDev.add(Box.createHorizontalGlue());
 
 		t.add(tDev);
@@ -654,10 +862,6 @@ public class SPIMAcquisition implements MMPlugin, ItemListener, ActionListener {
 
 		t.add(acqRangeTheta);
 		t.setMaximumSize(t.getPreferredSize());
-
-		JPanel acquisition = new JPanel();
-		acquisition.setName("Acquisition");
-		acquisition.setLayout(new BoxLayout(acquisition, BoxLayout.PAGE_AXIS));
 
 		JPanel acqSPIMTab = (JPanel)LayoutUtils.vertPanel(
 			Box.createVerticalGlue(),
@@ -675,102 +879,16 @@ public class SPIMAcquisition implements MMPlugin, ItemListener, ActionListener {
 		);
 		acqSPIMTab.setName(SPIM_RANGES);
 
-		acqPosTabs.add(SPIM_RANGES, acqSPIMTab);
+		return acqSPIMTab;
+	}
 
-		JButton acqMarkPos = new JButton("Insert Current Position");
-		acqMarkPos.addActionListener(new ActionListener() {
-			@Override
-			public void actionPerformed(ActionEvent ae) {
-				StepTableModel model = (StepTableModel)acqPositionsTable.getModel();
-				try {
-					int idx = model.getRowCount();
-
-					int[] selectedRows = acqPositionsTable.getSelectedRows();
-					if(selectedRows.length > 0)
-						idx = selectedRows[selectedRows.length - 1];
-
-					Vector3D pos = setup.getPosition();
-
-					model.insertRow(idx, new AcqRow(pos.getX(), pos.getY(), pos.getZ(), setup.getAngle()));
-				} catch(Throwable t) {
-					JOptionPane.showMessageDialog(acqPositionsTable,
-							"Couldn't mark: " + t.getMessage());
-
-					ReportingUtils.logError(t);
-				}
-			}
-		});
-
-		JButton acqMakeSlices = new JButton("Stack at this Z plus:");
-
-		// TODO: Decide good ranges for these...
-		double zstep = (setup.getZStage() != null ? setup.getZStage().getStepSize() : 1);
-
-		final JSpinner acqSliceRange = new JSpinner(new SpinnerNumberModel(zstep*50, zstep*-1000, zstep*1000, zstep));
-		acqSliceRange.setMaximumSize(acqSliceRange.getPreferredSize());
-		final JSpinner acqSliceStep = new JSpinner(new SpinnerNumberModel(zstep, zstep, zstep*1000, zstep));
-		acqSliceStep.setMaximumSize(acqSliceStep.getPreferredSize());
-
-		final JComboBox acqSliceVel = new JComboBox((setup.getZStage() != null ? setup.getZStage().getAllowedVelocities() : new LinkedList<Double>()).toArray());
-		acqSliceVel.setMaximumSize(acqSliceVel.getPreferredSize());
-
-		acqMakeSlices.addActionListener(new ActionListener() {
-			@Override
-			public void actionPerformed(ActionEvent ae) {
-				try {
-					StepTableModel model = (StepTableModel)acqPositionsTable.getModel();
-
-					int idx = model.getRowCount();
-
-					int[] selectedRows = acqPositionsTable.getSelectedRows();
-					if(selectedRows.length > 0)
-						idx = selectedRows[selectedRows.length - 1];
-
-					Vector3D xyz = setup.getPosition();
-					double theta = setup.getAngle();
-
-					double range = (Double)acqSliceRange.getValue();
-					boolean cont = continuousCheckbox.isSelected();
-
-					model.insertRow(idx, new AcqRow(xyz.getX(), xyz.getY(), xyz.getZ(), xyz.getZ() + range, (Double) (cont ? acqSliceVel.getSelectedItem() : acqSliceStep.getValue()), cont, theta));
-				} catch(Throwable t) {
-					JOptionPane.showMessageDialog(acqPositionsTable, "Couldn't create stack: " + t.getMessage());
-
-					ReportingUtils.logError(t);
-				}
-			}
-		});
-
-		final CardLayout velstepcards = new CardLayout();
-
-		final JPanel velstep = new JPanel(velstepcards);
-		velstep.add("Steps", LayoutUtils.horizPanel(acqSliceStep, new JLabel(" \u03BCm")));
-		velstep.add("Velocity", LayoutUtils.horizPanel(acqSliceVel, new JLabel(" \u03BCm/s")));
-
-		JPanel sliceOpts = (JPanel)LayoutUtils.horizPanel(
-			acqSliceRange,
-			new JLabel(" @ "),
-			velstep
-		);
-		sliceOpts.setAlignmentX(Component.LEFT_ALIGNMENT);
-
-		JButton acqRemovePos = new JButton("Delete Selected Rows");
-		acqRemovePos.addActionListener(new ActionListener() {
-			@Override
-			public void actionPerformed(ActionEvent ae) {
-				StepTableModel model = (StepTableModel)acqPositionsTable.getModel();
-
-				model.removeRows(acqPositionsTable.getSelectedRows());
-			}
-		});
-
-		JScrollPane tblScroller = new JScrollPane(acqPositionsTable = new JTable());
-		tblScroller.setPreferredSize(new Dimension(tblScroller.getSize().width, 256));
-
+	protected Component createAcquisitionPosListTab() {
 		StepTableModel model = new StepTableModel(SPIMDevice.STAGE_X, SPIMDevice.STAGE_Y, SPIMDevice.STAGE_THETA, SPIMDevice.STAGE_Z);
 
+		JScrollPane tblScroller = new JScrollPane(acqPositionsTable = new JTable(model));
+		tblScroller.setPreferredSize(new Dimension(tblScroller.getSize().width, 256));
+
 		acqPositionsTable.setFillsViewportHeight(true);
-		acqPositionsTable.setModel(model);
 		acqPositionsTable.addKeyListener(new KeyAdapter() {
 			@Override
 			public void keyPressed(KeyEvent ke) {
@@ -799,6 +917,118 @@ public class SPIMAcquisition implements MMPlugin, ItemListener, ActionListener {
 			}
 		});
 
+		JButton acqMarkPos = new JButton("Insert Current Position");
+		acqMarkPos.addActionListener(new ActionListener() {
+			@Override
+			public void actionPerformed(ActionEvent ae) {
+				StepTableModel model = (StepTableModel)acqPositionsTable.getModel();
+				try {
+					int idx = model.getRowCount();
+
+					int[] selectedRows = acqPositionsTable.getSelectedRows();
+					if(selectedRows.length > 0)
+						idx = selectedRows[selectedRows.length - 1];
+
+					Vector3D pos = setup.getPosition();
+
+					model.insertRow(idx, new AcqRow(pos.getX(), pos.getY(), pos.getZ(), setup.getAngle()));
+				} catch(Throwable t) {
+					JOptionPane.showMessageDialog(acqPositionsTable,
+							"Couldn't mark: " + t.getMessage());
+
+					ReportingUtils.logError(t);
+				}
+			}
+		});
+
+		// TODO: Decide good ranges for these...
+		double zstep = (setup.getZStage() != null ? setup.getZStage().getStepSize() : 1);
+
+		final JSpinner acqSliceRange = new JSpinner(new SpinnerNumberModel(zstep*50, zstep*-1000, zstep*1000, zstep));
+		acqSliceRange.setMaximumSize(acqSliceRange.getPreferredSize());
+
+		final JSpinner acqSliceStep = new JSpinner(new SpinnerNumberModel(zstep*2, zstep, zstep*1000, zstep));
+		acqSliceStep.setMaximumSize(acqSliceStep.getPreferredSize());
+
+		JButton acqMakeSlices = new JButton("Stack:");
+
+		acqMakeSlices.addActionListener(new ActionListener() {
+			@Override
+			public void actionPerformed(ActionEvent ae) {
+				try {
+					StepTableModel model = (StepTableModel)acqPositionsTable.getModel();
+
+					int idx = model.getRowCount();
+
+					int[] selectedRows = acqPositionsTable.getSelectedRows();
+					if(selectedRows.length > 0)
+						idx = selectedRows[selectedRows.length - 1];
+
+					Vector3D xyz = setup.getPosition();
+					double theta = setup.getAngle();
+
+					double range = (Double)acqSliceRange.getValue();
+
+					model.insertRow(idx, new AcqRow(xyz.getX(), xyz.getY(), xyz.getZ(), xyz.getZ() + range, (Double) acqSliceStep.getValue(), false, theta));
+				} catch(Throwable t) {
+					JOptionPane.showMessageDialog(acqPositionsTable, "Couldn't create stack: " + t.getMessage());
+
+					ReportingUtils.logError(t);
+				}
+			}
+		});
+
+		final JComboBox acqSliceVel = new JComboBox((setup.getZStage() != null ? setup.getZStage().getAllowedVelocities() : new LinkedList<Double>()).toArray());
+		acqSliceVel.setMaximumSize(acqSliceVel.getPreferredSize());
+
+		JButton acqMakeSweep = new JButton("Sweep:");
+
+		acqMakeSweep.addActionListener(new ActionListener() {
+			@Override
+			public void actionPerformed(ActionEvent ae) {
+				try {
+					StepTableModel model = (StepTableModel)acqPositionsTable.getModel();
+
+					int idx = model.getRowCount();
+
+					int[] selectedRows = acqPositionsTable.getSelectedRows();
+					if(selectedRows.length > 0)
+						idx = selectedRows[selectedRows.length - 1];
+
+					Vector3D xyz = setup.getPosition();
+					double theta = setup.getAngle();
+
+					double range = (Double)acqSliceRange.getValue();
+
+					model.insertRow(idx, new AcqRow(xyz.getX(), xyz.getY(), xyz.getZ(), xyz.getZ() + range, (Double) acqSliceVel.getSelectedItem(), true, theta));
+				} catch(Throwable t) {
+					JOptionPane.showMessageDialog(acqPositionsTable, "Couldn't create stack: " + t.getMessage());
+
+					ReportingUtils.logError(t);
+				}
+			}
+		});
+
+		JPanel sliceOpts = (JPanel)LayoutUtils.horizPanel(
+			acqSliceRange,
+			new JLabel(" @ "),
+			LayoutUtils.vertPanel(
+				LayoutUtils.horizPanel(acqSliceStep, new JLabel(" \u03BCm stp")),
+				LayoutUtils.horizPanel(acqSliceVel, new JLabel(" \u03BCm/s"))
+			)
+		);
+		sliceOpts.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+		JButton acqRemovePos = new JButton("Delete Selected Rows");
+		acqRemovePos.addActionListener(new ActionListener() {
+			@Override
+			public void actionPerformed(ActionEvent ae) {
+				StepTableModel model = (StepTableModel)acqPositionsTable.getModel();
+
+				model.removeRows(acqPositionsTable.getSelectedRows());
+			}
+		});
+
 		JButton goToButton = new JButton("Go To");
 		goToButton.addActionListener(new ActionListener() {
 			@Override
@@ -806,11 +1036,6 @@ public class SPIMAcquisition implements MMPlugin, ItemListener, ActionListener {
 				goToSelectedRow.run();
 			}
 		});
-
-		JPanel acqTableTab = new JPanel();
-		acqTableTab.setLayout(new BoxLayout(acqTableTab, BoxLayout.LINE_AXIS));
-
-		acqTableTab.add(tblScroller);
 
 		class DeltaListener implements ActionListener {
 			private final int delta;
@@ -837,34 +1062,77 @@ public class SPIMAcquisition implements MMPlugin, ItemListener, ActionListener {
 		JButton moveBottom = new JButton("To Bottom");
 		moveBottom.addActionListener(new DeltaListener(Short.MAX_VALUE));
 
-		JPanel outer = new JPanel();
-		outer.setLayout(new BoxLayout(outer, BoxLayout.PAGE_AXIS));
-
 		JPanel controls = new JPanel();
-		controls.setLayout(new GridLayout(11,1));
+		GroupLayout layout = new GroupLayout(controls);
+		controls.setLayout(layout);
 
-		controls.add(acqMarkPos);
-		controls.add(acqRemovePos);
-		controls.add(acqMakeSlices);
-		controls.add(sliceOpts);
-		controls.add(Box.createGlue());
-		controls.add(goToButton);
-		controls.add(Box.createGlue());
-		controls.add(moveTop);
-		controls.add(moveUp);
-		controls.add(moveDown);
-		controls.add(moveBottom);
+		JLabel at = new JLabel(" @ ");
+		JLabel step = new JLabel(" \u03BCm ");
+		JLabel vel = new JLabel(" \u03BCm/s ");
+		Component glue = Box.createVerticalGlue();
 
-		controls.setMaximumSize(controls.getPreferredSize());
+		layout.setHorizontalGroup(layout.createParallelGroup()
+			.addComponent(acqMarkPos, GroupLayout.DEFAULT_SIZE, GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+			.addComponent(acqRemovePos, GroupLayout.DEFAULT_SIZE, GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+			.addGap(16)
+			.addGroup(layout.createSequentialGroup()
+				.addComponent(acqMakeSlices, GroupLayout.DEFAULT_SIZE, GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+				.addComponent(acqMakeSweep, GroupLayout.DEFAULT_SIZE, GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
+			.addGroup(layout.createSequentialGroup()
+				.addComponent(acqSliceRange)
+				.addComponent(at)
+				.addGroup(layout.createParallelGroup()
+					.addComponent(acqSliceStep, GroupLayout.DEFAULT_SIZE, GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+					.addComponent(acqSliceVel, GroupLayout.DEFAULT_SIZE, GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
+				.addGroup(layout.createParallelGroup()
+					.addComponent(step)
+					.addComponent(vel)))
+			.addGap(16)
+			.addComponent(moveTop, GroupLayout.DEFAULT_SIZE, GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+			.addComponent(moveUp, GroupLayout.DEFAULT_SIZE, GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+			.addComponent(moveDown, GroupLayout.DEFAULT_SIZE, GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+			.addComponent(moveBottom, GroupLayout.DEFAULT_SIZE, GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+			.addGap(16)
+			.addComponent(goToButton, GroupLayout.DEFAULT_SIZE, GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+			.addComponent(glue)
+		);
 
-		outer.add(controls);
-		outer.add(Box.createVerticalGlue());
+		layout.setVerticalGroup(layout.createSequentialGroup()
+			.addComponent(acqMarkPos)
+			.addComponent(acqRemovePos)
+			.addGap(16)
+			.addGroup(layout.createParallelGroup()
+				.addComponent(acqMakeSlices)
+				.addComponent(acqMakeSweep))
+			.addGroup(layout.createParallelGroup(Alignment.CENTER)
+				.addComponent(acqSliceRange)
+				.addComponent(at)
+				.addGroup(layout.createSequentialGroup()
+					.addComponent(acqSliceStep)
+					.addComponent(acqSliceVel))
+				.addGroup(layout.createSequentialGroup()
+					.addComponent(step)
+					.addComponent(vel)))
+			.addGap(16)
+			.addComponent(moveTop)
+			.addComponent(moveUp)
+			.addComponent(moveDown)
+			.addComponent(moveBottom)
+			.addGap(16)
+			.addComponent(goToButton)
+			.addComponent(glue)
+		);
 
-		acqTableTab.add(outer);
+		JPanel acqTableTab = new JPanel();
+		acqTableTab.setLayout(new java.awt.BorderLayout(4, 4));
+		acqTableTab.add(tblScroller, java.awt.BorderLayout.CENTER);
+		acqTableTab.add(controls, java.awt.BorderLayout.EAST);		
 		acqTableTab.setName(POSITION_LIST);
 
-		acqPosTabs.add(POSITION_LIST, acqTableTab);
+		return acqTableTab;
+	}
 
+	protected Component createAcquisitionVideoTab() {
 		JPanel acqVideoTab = (JPanel) LayoutUtils.vertPanel(
 			Box.createVerticalGlue(),
 			LayoutUtils.horizPanel(
@@ -894,291 +1162,28 @@ public class SPIMAcquisition implements MMPlugin, ItemListener, ActionListener {
 			),
 			Box.createVerticalGlue()
 		);
+
 		acqVideoTab.setName(VIDEO_RECORDER);
 
-		acqPosTabs.add(VIDEO_RECORDER, acqVideoTab);
-
-		JPanel estimates = (JPanel)LayoutUtils.horizPanel(
-			estimatesText = new JLabel(" Estimates:"),
-			Box.createHorizontalGlue()
-		);
-
-		JPanel right = new JPanel();
-		right.setLayout(new BoxLayout(right, BoxLayout.PAGE_AXIS));
-		right.setBorder(BorderFactory.createTitledBorder("Acquisition"));
-
-		int minlp = (int) ((setup.getLaser() != null ? setup.getLaser().getMinPower() : 0.001) * 1000);
-		int deflp = (int) ((setup.getLaser() != null ? setup.getLaser().getPower() : 1) * 1000);
-		int maxlp = (int) ((setup.getLaser() != null ? setup.getLaser().getMaxPower() : 1) * 1000);
-
-		laserSlider = new SteppedSlider("Laser Power:", minlp, maxlp, 1, 10, deflp, SteppedSlider.LABEL_LEFT | SteppedSlider.INCREMENT_BUTTONS) {
-			@Override
-			public void valueChanged() {
-				try {
-					setup.getLaser().setPower(getValue() / 1000D); // laser api is in W
-				} catch (UnsupportedOperationException uoe) {
-					laserSlider.setEnabled(false);
-				} catch (Exception e) {
-					ReportingUtils.logError(e);
-				}
-			}
-		};
-
-		double defExposure = 100;
-		try {
-			defExposure = Math.min(1000, Math.max(10, mmc.getExposure()));
-		} catch(Exception e) {
-			ReportingUtils.logError(e);
-		};
-
-		// TODO: find out correct values
-		exposureSlider = new SteppedSlider("Exposure:", 10, 1000, 1, 10, defExposure, SteppedSlider.LABEL_LEFT | SteppedSlider.INCREMENT_BUTTONS) {
-			@Override
-			public void valueChanged() {
-				try {
-					mmc.setExposure(getValue());
-				} catch (Exception e) {
-					IJ.handleException(e);
-				}
-			}
-		};
-
-		laserPower = laserSlider.getValueBox();
-		exposure = exposureSlider.getValueBox();
-
-		liveCheckbox = new JCheckBox("Update Live View", true);
-		updateLiveImage = gui.isLiveModeOn();
-		liveCheckbox.setSelected(updateLiveImage);
-		liveCheckbox.addItemListener(new ItemListener() {
-			@Override
-			public void itemStateChanged(ItemEvent e) {
-				updateLiveImage = e.getStateChange() == ItemEvent.SELECTED;
-				if (updateLiveImage && !gui.isLiveModeOn())
-					gui.enableLiveMode(true);
-			}
-		});
-
-		registrationCheckbox = new JCheckBox(/*"Perform SPIM registration"*/);
-		registrationCheckbox.setSelected(false);
-		registrationCheckbox.setEnabled(false);
-
-		speedControl = new JButton("Set z-stage velocity");
-		speedControl.addActionListener(new ActionListener() {
-			@Override
-			public void actionPerformed(ActionEvent e) {
-				new Thread() {
-					public void run() {
-						setZStageVelocity();
-					}
-				}.start();
-			}
-		});
-
-		final JButton pickDirBtn = new JButton("Browse");
-
-		continuousCheckbox = new JCheckBox(/*"Snap Continously"*/);
-		continuousCheckbox.setSelected(false);
-		continuousCheckbox.setEnabled(false);
-		continuousCheckbox.addItemListener(new ItemListener() {
-			@Override
-			public void itemStateChanged(ItemEvent arg0) {
-				velstepcards.show(velstep, continuousCheckbox.isSelected() ? "Velocity" : "Steps");
-			}
-		});
-
-		antiDriftCheckbox = new JCheckBox("Use Anti-Drift");
-		antiDriftCheckbox.setSelected(false);
-		antiDriftCheckbox.setEnabled(true);
-
-		settleTime = new JSpinner(new SpinnerNumberModel(10, 0, 1000, 1));
-
-		laseStackCheckbox = new JCheckBox("Lase Full Stack");
-		laseStackCheckbox.setSelected(false);
-		laseStackCheckbox.setEnabled(true);
-
-		acqSaveDir = new JTextField(48);
-		acqSaveDir.setEnabled(true);
-		acqSaveDir.setText(prefsGet("outputdir", ""));
-
-		asyncCheckbox = new JCheckBox("Asynchronous Output");
-		asyncCheckbox.setSelected(true);
-		asyncCheckbox.setEnabled(true);
-		asyncCheckbox.setToolTipText("If checked, captured images will be buffered and written as time permits. This speeds up acquisition. Currently only applies if an output directory is specified.");
-
-		pickDirBtn.addActionListener(new ActionListener() {
-			@Override
-			public void actionPerformed(ActionEvent ae) {
-				JFileChooser fc = new JFileChooser(acqSaveDir.getText());
-
-				fc.setFileSelectionMode(VIDEO_RECORDER.equals(acqPosTabs.getSelectedComponent().getName()) ?
-						JFileChooser.FILES_AND_DIRECTORIES : JFileChooser.DIRECTORIES_ONLY);
-
-				if(fc.showDialog(frame, "Select") == JFileChooser.APPROVE_OPTION) {
-					acqSaveDir.setText(fc.getSelectedFile().getAbsolutePath());
-					prefsSet("outputdir", acqSaveDir.getText());
-				}
-			};
-		});
-
-		addLine(right, Justification.RIGHT, "Laser power (mW):", laserPower, "Exposure (ms):", exposure);
-		addLine(right, Justification.STRETCH, laserSlider);
-		addLine(right, Justification.STRETCH, exposureSlider);
-		addLine(right, Justification.RIGHT, "Data tag:", acqDataTag = new JTextField("spim", 16), speedControl, antiDriftCheckbox, liveCheckbox, laseStackCheckbox);
-		addLine(right, Justification.RIGHT, "Output directory:", acqSaveDir, pickDirBtn, asyncCheckbox);
-
-		JPanel bottom = new JPanel();
-		bottom.setLayout(new BoxLayout(bottom, BoxLayout.LINE_AXIS));
-
-		JPanel timeBox = new JPanel();
-		timeBox.setLayout(new BoxLayout(timeBox, BoxLayout.LINE_AXIS));
-		timeBox.setBorder(BorderFactory.createTitledBorder("Time"));
-
-		acqTimeCB = new JCheckBox("");
-		acqTimeCB.setSelected(false);
-
-		JLabel step = new JLabel("Interval (s):");
-		step.setToolTipText("Delay between acquisition sequences in milliseconds.");
-		acqStepBox = new JTextField(8);
-		acqStepBox.setMaximumSize(acqStepBox.getPreferredSize());
-
-		JLabel count = new JLabel("Count:");
-		count.setToolTipText("Number of acquisition sequences to perform.");
-		acqCountBox = new JTextField(8);
-		acqCountBox.setMaximumSize(acqCountBox.getPreferredSize());
-
-		acqTimeCB.addItemListener(this);
-
-		timeBox.add(acqTimeCB);
-		timeBox.add(step);
-		timeBox.add(acqStepBox);
-		timeBox.add(Box.createRigidArea(new Dimension(4, 10)));
-		timeBox.add(count);
-		timeBox.add(acqCountBox);
-
-		bottom.add(timeBox);
-
-		JPanel timeoutBox = new JPanel();
-		timeoutBox.setLayout(new BoxLayout(timeoutBox, BoxLayout.LINE_AXIS));
-		timeoutBox
-				.setBorder(BorderFactory.createTitledBorder("Device Timeout"));
-
-		acqTimeoutCB = new JCheckBox("Override Timeout:");
-		acqTimeoutCB.setHorizontalTextPosition(JCheckBox.RIGHT);
-		acqTimeoutCB.addItemListener(this);
-
-		acqTimeoutValBox = new JTextField(8);
-		acqTimeoutValBox.setMaximumSize(acqTimeoutValBox.getPreferredSize());
-
-		timeoutBox.add(acqTimeoutCB);
-		timeoutBox.add(acqTimeoutValBox);
-
-		bottom.add(timeoutBox);
-
-		asyncMonitorCheckbox = new JCheckBox(/*"Monitor Async Output"*/);
-
-		asyncMemQuota = new JSpinner(new SpinnerNumberModel(0.8, 0.0, 1.0, 0.05));
-		asyncDiskQuota = new JSpinner(new SpinnerNumberModel(0.9, 0.0, 1.0, 0.05));
-		asyncGCRatio = new JSpinner(new SpinnerNumberModel(0.5, 0.0, 1.0, 0.05));
-
-		acqProfileCheckbox = new JCheckBox(/*"Profile Acquisition"*/);
-
-		acqOptionsFrame = new JFrame("Acquisition Options");
-		JPanel optsPanel = LayoutUtils.form(
-				"Z settle time (ms):", settleTime,
-				"Continuous Mode:", continuousCheckbox,
-				"SPIM Registration:", registrationCheckbox,
-				"Monitor Async Output:", asyncMonitorCheckbox,
-				"\tMemory Quota:", asyncMemQuota,
-				"\tDisk Quota:", asyncDiskQuota,
-				"\tGC Aggression:", asyncGCRatio,
-				"Profile Acquisition:", acqProfileCheckbox
-		);
-		optsPanel.setBorder(BorderFactory.createEmptyBorder(4, 4, 4, 4));
-		acqOptionsFrame.add(optsPanel);
-		acqOptionsFrame.pack();
-
-		JButton showMoreOptions = new JButton("Show Dialog");
-		showMoreOptions.addActionListener(new ActionListener() {
-			@Override
-			public void actionPerformed(ActionEvent ae) {
-				Point screen = ((Component) ae.getSource()).getLocationOnScreen();
-				int w = ((Component) ae.getSource()).getWidth();
-				int h = ((Component) ae.getSource()).getHeight();
-				acqOptionsFrame.setVisible(true);
-				acqOptionsFrame.setLocation(screen.x + w/2 - acqOptionsFrame.getWidth()/2, screen.y + h);
-			}
-		});
-
-		bottom.add(LayoutUtils.horizPanel("More Options", showMoreOptions));
-
-		JPanel goBtnPnl = new JPanel();
-		goBtnPnl.setLayout(new GridLayout(2,1));
-
-		acqGoBtn = new JButton(BTN_START);
-		acqGoBtn.addActionListener(this);
-		goBtnPnl.add(acqGoBtn);
-
-		acqProgress = new JProgressBar(0, 100);
-		acqProgress.setEnabled(false);
-		acqProgress.setStringPainted(true);
-		acqProgress.setString("Not Acquiring");
-		goBtnPnl.add(acqProgress);
-
-		bottom.add(Box.createHorizontalGlue());
-		bottom.add(goBtnPnl);
-
-		acqTimeCB.setSelected(false);
-		acqCountBox.setEnabled(false);
-		acqStepBox.setEnabled(false);
-
-		acqTimeoutCB.setSelected(false);
-		acqTimeoutValBox.setEnabled(false);
-
-		acquisition.add(acqPosTabs);
-		acquisition.add(estimates);
-		acquisition.add(right);
-		acquisition.add(bottom);
-
-		JTabbedPane tabs = new JTabbedPane();
-		tabs.add("Stage Controls", stageControls);
-		tabs.add("Acquisition", acquisition);
-
-		frame.add(tabs);
-
-		frame.pack();
-
-		frame.addWindowFocusListener(new WindowAdapter() {
-			@Override
-			public void windowGainedFocus(WindowEvent e) {
-				tryUpdateSliderPositions();
-			}
-		});
-
-		timer = new java.util.Timer(true);
-
-		timer.scheduleAtFixedRate(new TimerTask() {
-			@Override
-			public void run() {
-				try {
-					updateMotorPositions();
-					updateSizeEstimate();
-				} catch (Exception e) {
-					ReportingUtils.logError(e);
-				}
-			}
-		}, 0, MOTORS_UPDATE_PERIOD);
+		return acqVideoTab;
 	}
 
 	@SuppressWarnings("serial")
-	private static SteppedSlider makeStageSlider(final SPIMSetup setup, final SPIMDevice dev, double min, double max, double step, int options) {
+	private static SteppedSlider makeStageSlider(final SPIMSetup setup, final SPIMDevice dev, double min, double max, Double step, Double bigstep, int options) {
 		if(setup.getDevice(dev) != null && !(setup.getDevice(dev) instanceof Stage))
-			throw new IllegalArgumentException("makeStageSliderSafe given a non-Stage device");
+			throw new IllegalArgumentException("makeStageSlider given a non-Stage device");
 
 		Stage stage = (Stage) setup.getDevice(dev);
 
 		min = stage != null ? stage.getMinPosition() : min;
 		max = stage != null ? stage.getMaxPosition() : max;
-		step = stage != null ? stage.getStepSize() : step;
+
+		if(step == null)
+			step = stage != null ? stage.getStepSize() : 1;
+
+		if(bigstep == null)
+			bigstep = step*10;
+
 		double def = stage != null ? stage.getPosition() : 0;
 
 		if(max < min)
@@ -1193,7 +1198,7 @@ public class SPIMAcquisition implements MMPlugin, ItemListener, ActionListener {
 			((Stage)setup.getDevice(dev)).setPosition(def);
 		}
 
-		SteppedSlider out = new SteppedSlider(dev.getText(), min, max, step, 10*step, def, options) {
+		SteppedSlider out = new SteppedSlider(dev.getText(), min, max, step, bigstep, def, options) {
 			@Override
 			public void valueChanged() {
 				if(setup.getDevice(dev) == null)
@@ -1339,18 +1344,11 @@ public class SPIMAcquisition implements MMPlugin, ItemListener, ActionListener {
 		String laserLabel = setup.getLaser() != null ? setup.getLaser().getLabel() : null;
 		String cameraLabel = setup.getCamera() != null ? setup.getCamera().getLabel() : null;
 
-		xPosition.setEnabled(acqThread == null && xStageLabel != null);
-		yPosition.setEnabled(acqThread == null && yStageLabel != null);
-		zPosition.setEnabled(acqThread == null && zStageLabel != null);
-		rotation.setEnabled(acqThread == null && twisterLabel != null);
-
 		xSlider.setEnabled(acqThread == null && xStageLabel != null);
 		ySlider.setEnabled(acqThread == null && yStageLabel != null);
 		zSlider.setEnabled(acqThread == null && zStageLabel != null);
 		rotationSlider.setEnabled(acqThread == null && twisterLabel != null);
 
-		laserPower.setEnabled(acqThread == null && laserLabel != null);
-		exposure.setEnabled(acqThread == null && cameraLabel != null);
 		laserSlider.setEnabled(acqThread == null && laserLabel != null);
 		exposureSlider.setEnabled(acqThread == null && cameraLabel != null);
 		liveCheckbox.setEnabled(acqThread == null && cameraLabel != null);
@@ -1361,24 +1359,6 @@ public class SPIMAcquisition implements MMPlugin, ItemListener, ActionListener {
 		acqXYDevCB.setSelected(xStageLabel != null && yStageLabel != null);
 		acqZDevCB.setSelected(zStageLabel != null);
 		acqTDevCB.setSelected(twisterLabel != null);
-
-		acqXYDevCmbo.setModel(new DefaultComboBoxModel(
-				mmc.getLoadedDevicesOfType(DeviceType.XYStageDevice).toArray()));
-		acqZDevCmbo.setModel(new DefaultComboBoxModel(
-				mmc.getLoadedDevicesOfType(DeviceType.StageDevice).toArray()));
-		acqTDevCmbo.setModel(new DefaultComboBoxModel(
-				mmc.getLoadedDevicesOfType(DeviceType.StageDevice).toArray()));
-
-		if(mmc.getXYStageDevice() != null)	// TODO: fixme or delete this tab outright...
-			acqXYDevCmbo.setSelectedItem(mmc.getXYStageDevice());
-		if(zStageLabel != null)
-			acqZDevCmbo.setSelectedItem(zStageLabel);
-		if(twisterLabel != null)
-			acqTDevCmbo.setSelectedItem(twisterLabel);
-
-		acqXYDevCmbo.setEnabled(xStageLabel != null && yStageLabel != null);
-		acqZDevCmbo.setEnabled(zStageLabel != null);
-		acqTDevCmbo.setEnabled(twisterLabel != null);
 
 		acqRangeX.setEnabled(xStageLabel != null);
 		acqRangeY.setEnabled(yStageLabel != null);
@@ -1527,13 +1507,13 @@ public class SPIMAcquisition implements MMPlugin, ItemListener, ActionListener {
 		if (key != null)
 			prefs.putDouble(key, value);
 	}
-	
+
 	public static String prefsGet(String key, String defaultValue) {
 		if (key == null)
 			return defaultValue;
 		return prefs.get(key, defaultValue);
 	}
-	
+
 	public static void prefsSet(String key, String value) {
 		if (key != null)
 			prefs.put(key, value);
@@ -1558,15 +1538,12 @@ public class SPIMAcquisition implements MMPlugin, ItemListener, ActionListener {
 	@Override
 	public void itemStateChanged(ItemEvent ie) {
 		if(ie.getSource().equals(acqXYDevCB)) {
-			acqXYDevCmbo.setEnabled(acqXYDevCB.isSelected());
 			acqRangeX.setEnabled(acqXYDevCB.isSelected());
 			acqRangeY.setEnabled(acqXYDevCB.isSelected());
 		} else if(ie.getSource().equals(acqZDevCB)) {
 			acqRangeZ.setEnabled(acqZDevCB.isSelected());
-			acqZDevCmbo.setEnabled(acqZDevCB.isSelected());
 		} else if(ie.getSource().equals(acqTDevCB)) {
 			acqRangeTheta.setEnabled(acqTDevCB.isSelected());
-			acqTDevCmbo.setEnabled(acqTDevCB.isSelected());
 		} else if(ie.getSource().equals(acqTimeCB)) {
 			acqCountBox.setEnabled(acqTimeCB.isSelected());
 			acqStepBox.setEnabled(acqTimeCB.isSelected());
@@ -1678,7 +1655,7 @@ public class SPIMAcquisition implements MMPlugin, ItemListener, ActionListener {
 		mmcorej.TaggedImage TI = mmc.popNextTaggedImage();
 
 		ImageProcessor IP = ImageUtils.makeProcessor(TI);
-		
+
 		double t = System.nanoTime() / 1e9 - bt;
 
 		ImagePlus img = null;
@@ -1708,7 +1685,7 @@ public class SPIMAcquisition implements MMPlugin, ItemListener, ActionListener {
 				if(tmpSaveFile.exists() && tmpSaveFile.isDirectory())  {
 					Date now = Calendar.getInstance().getTime();
 					SimpleDateFormat format = new SimpleDateFormat("d MMM yyyy HH.mm");
-					
+
 					tmpSaveFile = new File(tmpSaveFile, format.format(now) + ".tiff");
 				}
 
@@ -1785,7 +1762,7 @@ public class SPIMAcquisition implements MMPlugin, ItemListener, ActionListener {
 								public int compare(File f1, File f2) {
 									String n1 = f1.getName();
 									String n2 = f2.getName();
-									
+
 									double d1 = Double.parseDouble(n1.substring(0, n1.length() - 5));
 									double d2 = Double.parseDouble(n2.substring(0, n2.length() - 5));
 
@@ -1907,13 +1884,17 @@ public class SPIMAcquisition implements MMPlugin, ItemListener, ActionListener {
 					output = null;
 				}
 
-				if(antiDriftCheckbox.isSelected())
+				if(antiDriftCheckbox.isSelected()) {
 					params.setAntiDrift(new AntiDrift.Factory() {
 						@Override
 						public AntiDrift manufacture(AcqParams p, AcqRow r) {
 							return new ProjDiffAntiDrift(output, p, r);
 						}
 					});
+				}
+
+				if(liveCheckbox.isSelected() && !gui.isLiveModeOn())
+					gui.enableLiveMode(true);
 
 				params.setUpdateLive(liveCheckbox.isSelected());
 				params.setIllumFullStack(laseStackCheckbox.isSelected());
