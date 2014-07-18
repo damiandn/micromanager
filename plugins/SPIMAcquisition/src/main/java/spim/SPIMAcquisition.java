@@ -508,7 +508,7 @@ public class SPIMAcquisition implements MMPlugin, ItemListener, ActionListener {
 		addLine(stages, Justification.STRETCH, ySlider);
 		stages.add(Box.createVerticalStrut(8));
 		addLine(stages, Justification.STRETCH, zSlider);
-		addLine(stages, Justification.STRETCH, Box.createHorizontalGlue(), "+/-: ", stepSmall, " Shift+/-: ", stepLarge, " ", homeBtn, " Easy Stack: ", markStart, " Step size: ", acqSliceStep, " ", markEnd, Box.createHorizontalGlue());
+		stages.add(LayoutUtils.tabular(BoxLayout.LINE_AXIS, 11, false, false, "Small step:", stepSmall, "Large step:", stepLarge, homeBtn, Box.createHorizontalGlue(), "Easy stack:", markStart, markEnd, "Step size:", acqSliceStep));
 		stages.add(Box.createVerticalStrut(8));
 		addLine(stages, Justification.STRETCH, rotationSlider);
 		addLine(stages, Justification.STRETCH, zeroTwisterButton);
@@ -562,7 +562,7 @@ public class SPIMAcquisition implements MMPlugin, ItemListener, ActionListener {
 		JPanel stageControls = LayoutUtils.vertPanel(
 			stages,
 			Box.createVerticalGlue(),
-			LayoutUtils.horizPanel(
+			LayoutUtils.tabular(BoxLayout.LINE_AXIS, 5, false, false,
 				Box.createHorizontalGlue(),
 				autoReplaceMMControls,
 				devMgrBtn,
@@ -715,7 +715,7 @@ public class SPIMAcquisition implements MMPlugin, ItemListener, ActionListener {
 		continuousCheckbox.setEnabled(false);
 
 		acqOptionsFrame = new JFrame("Acquisition Options");
-		JPanel optsPanel = LayoutUtils.form(
+		JPanel optsPanel = LayoutUtils.form(1,
 				"Z settle time (ms):", settleTime,
 				"Continuous Mode:", continuousCheckbox,
 				"SPIM Registration:", registrationCheckbox,
