@@ -1,20 +1,29 @@
 package spim.setup;
 
+import java.util.Arrays;
+
 import org.micromanager.utils.ReportingUtils;
 
 import spim.setup.SPIMSetup.SPIMDevice;
-
 import mmcorej.CMMCore;
 import mmcorej.DeviceType;
 
 public class Laser extends Device {
-	static {
-		Device.installFactory(new Factory() {
-			@Override
-			public Device manufacture(CMMCore core, String label) {
-				return new Laser(core, label);
-			}
-		}, "*", SPIMDevice.LASER1, SPIMDevice.LASER2);
+	public static class Factory implements Device.Factory {
+		@Override
+		public String deviceName() {
+			return "*";
+		}
+
+		@Override
+		public Iterable<SPIMDevice> deviceTypes() {
+			return Arrays.asList(SPIMDevice.LASER1, SPIMDevice.LASER2);
+		}
+
+		@Override
+		public Device manufacture(CMMCore core, String label) {
+			return new Laser(core, label);
+		}
 	}
 
 	public Laser(CMMCore core, String label) {

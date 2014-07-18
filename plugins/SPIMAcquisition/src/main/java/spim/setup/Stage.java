@@ -1,23 +1,31 @@
 package spim.setup;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 
 import org.micromanager.utils.ReportingUtils;
 
 import spim.setup.SPIMSetup.SPIMDevice;
-
 import mmcorej.CMMCore;
 import mmcorej.DeviceType;
 
 public class Stage extends Device {
-	static {
-		Device.installFactory(new Factory() {
-			public Device manufacture(CMMCore core, String label) {
-				return new Stage(core, label);
-			}
-		}, "*", SPIMDevice.STAGE_Z);
+	public static class Factory implements Device.Factory {
+		@Override
+		public String deviceName() {
+			return "*";
+		}
+
+		@Override
+		public Iterable<SPIMDevice> deviceTypes() {
+			return Arrays.asList(SPIMDevice.STAGE_X, SPIMDevice.STAGE_Y, SPIMDevice.STAGE_Z);
+		}
+
+		public Device manufacture(CMMCore core, String label) {
+			return new Stage(core, label);
+		}
 	}
 
 	public Stage(CMMCore core, String label) {

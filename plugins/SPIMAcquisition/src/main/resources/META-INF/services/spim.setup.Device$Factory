@@ -1,0 +1,17 @@
+# Generic devices
+spim.setup.Stage$Factory
+spim.setup.GenericXYStage$FactoryX
+spim.setup.GenericXYStage$FactoryY
+spim.setup.GenericRotator$Factory
+spim.setup.Laser$Factory
+spim.setup.Camera$Factory
+
+# OpenSPIM 1.0 devices
+spim.setup.PicardStage$Factory
+spim.setup.PicardXYStage$FactoryX
+spim.setup.PicardXYStage$FactoryY
+spim.setup.PicardTwister$Factory
+spim.setup.CoherentCube$Factory
+
+# Other devices
+spim.setup.Cobolt$Factory

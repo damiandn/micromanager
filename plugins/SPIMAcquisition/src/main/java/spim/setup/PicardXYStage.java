@@ -1,32 +1,47 @@
 package spim.setup;
 
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 
 import org.micromanager.utils.ReportingUtils;
 
 import mmcorej.CMMCore;
-import spim.setup.Device.Factory;
 import spim.setup.SPIMSetup.SPIMDevice;
 
 public class PicardXYStage extends GenericXYStage {
-	static {
-		Factory factX = new Factory() {
-			@Override
-			public Device manufacture(CMMCore core, String label) {
-				return PicardXYStage.getStage(core, label, true);
-			}
-		};
+	public static class FactoryX implements Device.Factory {
+		@Override
+		public String deviceName() {
+			return "Picard XY Stage";
+		}
 
-		Factory factY = new Factory() {
-			@Override
-			public Device manufacture(CMMCore core, String label) {
-				return PicardXYStage.getStage(core, label, false);
-			}
-		};
+		@Override
+		public Iterable<SPIMDevice> deviceTypes() {
+			return Arrays.asList(SPIMDevice.STAGE_X);
+		}
 
-		Device.installFactory(factX, "Picard XY Stage", SPIMDevice.STAGE_X);
-		Device.installFactory(factY, "Picard XY Stage", SPIMDevice.STAGE_Y);
+		@Override
+		public Device manufacture(CMMCore core, String label) {
+			return PicardXYStage.getStage(core, label, true);
+		}
+	}
+
+	public static class FactoryY implements Device.Factory {
+		@Override
+		public String deviceName() {
+			return "Picard XY Stage";
+		}
+
+		@Override
+		public Iterable<SPIMDevice> deviceTypes() {
+			return Arrays.asList(SPIMDevice.STAGE_Y);
+		}
+
+		@Override
+		public Device manufacture(CMMCore core, String label) {
+			return PicardXYStage.getStage(core, label, false);
+		}
 	}
 
 	public PicardXYStage() {

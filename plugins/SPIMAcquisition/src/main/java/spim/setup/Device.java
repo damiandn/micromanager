@@ -5,12 +5,12 @@ import java.util.Collection;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.ServiceLoader;
 import java.util.Set;
 
 import org.micromanager.utils.ReportingUtils;
 
 import spim.setup.SPIMSetup.SPIMDevice;
-
 import mmcorej.CMMCore;
 import mmcorej.DeviceType;
 import mmcorej.StrVector;
@@ -182,25 +182,27 @@ public abstract class Device {
 	 * Device factory stuff
 	 */
 	public static interface Factory {
+		public abstract String deviceName();
+		public abstract Iterable<SPIMDevice> deviceTypes();
 		public abstract spim.setup.Device manufacture(CMMCore core, String label);
-	}
-
-	protected static void installFactory(Factory fact, String name, SPIMDevice... types) {
-		for (SPIMDevice type : types)
-			if (factoryMap.get(type).get(name) == null)
-				factoryMap.get(type).put(name, fact);
-			else
-				throw new Error("Attempt to add second factory for device name \"" + name + "\". Each device name can have only one factory.");
 	}
 
 	protected static Map<SPIMDevice, Map<String, Factory>> factoryMap = new EnumMap<SPIMDevice, Map<String, Factory>>(SPIMDevice.class);
 
-	static {
-		for (SPIMDevice type : SPIMDevice.values())
-			factoryMap.put(type, new HashMap<String, Factory>());
+	public static void initializeFactories() {
+		if(factoryMap.isEmpty()) synchronized(factoryMap) {
+			for (SPIMDevice type : SPIMDevice.values())
+				factoryMap.put(type, new HashMap<String, Factory>());
+
+			for(Factory fact : ServiceLoader.load(Factory.class))
+				for(SPIMDevice type : fact.deviceTypes())
+					factoryMap.get(type).put(fact.deviceName(), fact);
+		}
 	}
 
 	public static Device createDevice(CMMCore core, SPIMDevice type, String label) throws Exception {
+		initializeFactories();
+
 		String deviceName = core.getDeviceName(label);
 
 		if (!hasFactory(type, deviceName)) {
@@ -214,10 +216,14 @@ public abstract class Device {
 	}
 
 	public static Set<String> getKnownDeviceNames(SPIMDevice type) {
+		initializeFactories();
+
 		return factoryMap.get(type).keySet();
 	}
 
 	public static boolean hasFactory(SPIMDevice type, String deviceName) {
+		initializeFactories();
+
 		return factoryMap.get(type).get(deviceName) != null;
 	}
 }

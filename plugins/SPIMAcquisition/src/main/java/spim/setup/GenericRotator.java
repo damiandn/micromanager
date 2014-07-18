@@ -1,20 +1,26 @@
 package spim.setup;
 
 import java.util.Arrays;
-import java.util.Collection;
 
 import spim.setup.SPIMSetup.SPIMDevice;
-
 import mmcorej.CMMCore;
 
 public class GenericRotator extends Stage {
-	static {
-		Device.installFactory(new Factory() {
-			@Override
-			public Device manufacture(CMMCore core, String label) {
-				return new GenericRotator(core, label);
-			}
-		}, "*", SPIMDevice.STAGE_THETA);
+	public static class Factory implements Device.Factory {
+		@Override
+		public String deviceName() {
+			return "*";
+		}
+
+		@Override
+		public Iterable<SPIMDevice> deviceTypes() {
+			return Arrays.asList(SPIMDevice.STAGE_THETA);
+		}
+
+		@Override
+		public Device manufacture(CMMCore core, String label) {
+			return new GenericRotator(core, label);
+		}
 	}
 
 	public GenericRotator(CMMCore core, String label) {

@@ -1,21 +1,30 @@
 package spim.setup;
 
+import java.util.Arrays;
+
 import org.micromanager.utils.ReportingUtils;
 
 import spim.setup.SPIMSetup.SPIMDevice;
-
 import mmcorej.CMMCore;
 import mmcorej.DeviceType;
 import mmcorej.TaggedImage;
 
 public class Camera extends Device {
-	static {
-		Device.installFactory(new Factory() {
-			@Override
-			public Device manufacture(CMMCore core, String label) {
-				return new Camera(core, label);
-			}
-		}, "*", SPIMDevice.CAMERA1, SPIMDevice.CAMERA2);
+	public static class Factory implements Device.Factory {
+		@Override
+		public String deviceName() {
+			return "*";
+		}
+
+		@Override
+		public Iterable<SPIMDevice> deviceTypes() {
+			return Arrays.asList(SPIMDevice.CAMERA1, SPIMDevice.CAMERA2);
+		}
+
+		@Override
+		public Device manufacture(CMMCore core, String label) {
+			return new Camera(core, label);
+		}
 	}
 
 	public Camera(CMMCore core, String label) {
