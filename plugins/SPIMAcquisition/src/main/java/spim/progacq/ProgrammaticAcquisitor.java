@@ -66,7 +66,7 @@ public class ProgrammaticAcquisitor {
 			return getLogText(0);
 		}
 
-		private void tabs(StringBuilder sb, int c) {
+		private static void tabs(StringBuilder sb, int c) {
 			for(int i=0; i < c; ++i)
 				sb.append("    ");
 		}
@@ -79,11 +79,18 @@ public class ProgrammaticAcquisitor {
 			sb.append(String.format("%.4f", getTimer()));
 			sb.append("s\n");
 
+			double childrenTime = 0;
 			for(Profiler child : children.values()) {
 				tabs(sb, indent);
+				childrenTime += child.getTimer();
 				sb.append(String.format("%.4f%%:", child.getTimer() / getTimer() * 100));
 				sb.append(child.getLogText(indent + 1));
 			};
+
+			if(childrenTime > 0.0 && childrenTime < getTimer() && childrenTime/getTimer() < 0.99) {
+				tabs(sb, indent);
+				sb.append(String.format("%.4f%%: (unaccounted) %.4fs\n", (getTimer() - childrenTime) / getTimer() * 100, getTimer() - childrenTime));
+			}
 
 			return sb.toString();
 		}
@@ -313,6 +320,15 @@ public class ProgrammaticAcquisitor {
 		public abstract void reportProgress(int tp, int row, double overall);
 	}
 
+	private final static String SETUP = "Setup";
+
+	private final static String ACQUISITION = "Acquisition";
+	private final static String SNAP_IMAGE = "SnapImage";
+	private final static String MOVEMENT = "Movement";
+	private final static String OUTPUT = "Output";
+
+	private final static String FINALIZATION = "Finalization";
+
 	/**
 	 * Performs an acquisition sequence according to the parameters passed.
 	 * 
@@ -331,16 +347,19 @@ public class ProgrammaticAcquisitor {
 
 		if(params.doProfiling())
 		{
-			prof.create("Setup");
-			prof.create("Output");
-			prof.create("Movement");
-			prof.create("Acquisition");
+			prof.create(SETUP);
+			prof.create(ACQUISITION);
+				prof.get(ACQUISITION).create(SNAP_IMAGE);
+				prof.get(ACQUISITION).create(MOVEMENT);
+				prof.get(ACQUISITION).create(OUTPUT);
+			prof.create(FINALIZATION);
+				prof.get(FINALIZATION).create(OUTPUT);
 
 			prof.start();
 		}
 
 		if(params.doProfiling())
-			prof.get("Setup").start();
+			prof.get(SETUP).start();
 
 		final SPIMSetup setup = params.getSetup();
 		final CMMCore core = setup.getCore();
@@ -365,8 +384,10 @@ public class ProgrammaticAcquisitor {
 		else
 			driftCompMap = null;
 
-		if(params.doProfiling())
-			prof.get("Setup").stop();
+		if(params.doProfiling()) {
+			prof.get(SETUP).stop();
+			prof.get(ACQUISITION).start();
+		}
 
 		for(int timeSeq = 0; timeSeq < params.getTimeSeqCount(); ++timeSeq) {
 			int step = 0;
@@ -398,25 +419,25 @@ public class ProgrammaticAcquisitor {
 				};
 
 				if(params.doProfiling())
-					prof.get("Movement").start();
+					prof.get(ACQUISITION).get(MOVEMENT).start();
 
 				params.status.moving();
 				runDevicesAtRow(setup, row);
 				Thread.sleep(params.getSettleDelay());
 
 				if(params.doProfiling())
-					prof.get("Movement").stop();
+					prof.get(ACQUISITION).get(MOVEMENT).stop();
 
 				if(params.isIllumFullStack() && setup.getLaser() != null)
 					setup.getLaser().setPoweredOn(true);
 
 				if(params.doProfiling())
-					prof.get("Output").start();
+					prof.get(ACQUISITION).get(OUTPUT).start();
 
 				handler.beginStack(tp, rown);
 
 				if(params.doProfiling())
-					prof.get("Output").stop();
+					prof.get(ACQUISITION).get(OUTPUT).stop();
 
 				if(row.getZStartPosition() == row.getZEndPosition()) {
 					if(!params.isContinuous()) {
@@ -442,7 +463,7 @@ public class ProgrammaticAcquisitor {
 						}
 
 						if(params.doProfiling())
-							prof.get("Movement").start();
+							prof.get(ACQUISITION).get(MOVEMENT).start();
 
 						params.status.moving();
 						setup.getZStage().setPosition(positions[slice]);
@@ -455,26 +476,26 @@ public class ProgrammaticAcquisitor {
 						}
 
 						if(params.doProfiling())
-							prof.get("Movement").stop();
+							prof.get(ACQUISITION).get(MOVEMENT).stop();
 
 						if(!params.isContinuous()) {
 							if(params.doProfiling())
-								prof.get("Acquisition").start();
+								prof.get(ACQUISITION).get(SNAP_IMAGE).start();
 
 							params.status.snapping();
 							TaggedImage ti = snapImage(setup, !params.isIllumFullStack());
 							MDUtils.setSliceIndex(ti.tags, slice);
 
 							if(params.doProfiling())
-								prof.get("Acquisition").stop();
+								prof.get(ACQUISITION).get(SNAP_IMAGE).stop();
 
 							if(params.doProfiling())
-								prof.get("Output").start();
+								prof.get(ACQUISITION).get(OUTPUT).start();
 
 							handleSlice(row, setup, metaDevs, acqBegan, tp, rown, ti, handler, true);
 
 							if(params.doProfiling())
-								prof.get("Output").stop();
+								prof.get(ACQUISITION).get(OUTPUT).stop();
 
 							if(ad != null)
 								tallyAntiDriftSlice(core, setup, row, ad, ti);
@@ -522,13 +543,13 @@ public class ProgrammaticAcquisitor {
 						}
 
 						if(params.doProfiling())
-							prof.get("Output").start();
+							prof.get(ACQUISITION).get(OUTPUT).start();
 
 						TaggedImage ti = core.popNextTaggedImage();
 						handleSlice(row, setup, metaDevs, acqBegan, tp, rown, ti, handler, false);
 
 						if(params.doProfiling())
-							prof.get("Output").stop();
+							prof.get(ACQUISITION).get(OUTPUT).stop();
 
 						if(params.isUpdateLive())
 							updateLiveImage(frame, ti);
@@ -541,12 +562,12 @@ public class ProgrammaticAcquisitor {
 				};
 
 				if(params.doProfiling())
-					prof.get("Output").start();
+					prof.get(ACQUISITION).get(OUTPUT).start();
 
 				handler.finalizeStack(tp, rown);
 
 				if(params.doProfiling())
-					prof.get("Output").stop();
+					prof.get(ACQUISITION).get(OUTPUT).stop();
 
 				if(params.isIllumFullStack() && setup.getLaser() != null)
 					setup.getLaser().setPoweredOn(false);
@@ -592,13 +613,16 @@ public class ProgrammaticAcquisitor {
 
 		params.status.teardown();
 
-		if(params.doProfiling())
-			prof.get("Output").start();
+		if(params.doProfiling()) {
+			prof.get(ACQUISITION).stop();
+			prof.get(FINALIZATION).start();
+			prof.get(FINALIZATION).get(OUTPUT).start();
+		}
 
 		handler.finalizeAcquisition();
 
 		if(params.doProfiling())
-			prof.get("Output").stop();
+			prof.get(FINALIZATION).get(OUTPUT).stop();
 
 		if(autoShutter)
 			core.setAutoShutter(true);
@@ -609,6 +633,7 @@ public class ProgrammaticAcquisitor {
 
 		if(params.doProfiling())
 		{
+			prof.get(FINALIZATION).stop();
 			prof.stop();
 			ij.IJ.log(prof.getLogText());
 		}
