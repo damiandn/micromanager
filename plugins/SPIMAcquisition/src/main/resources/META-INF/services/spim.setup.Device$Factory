@@ -15,3 +15,4 @@ spim.setup.CoherentCube$Factory
 
 # Other devices
 spim.setup.Cobolt$Factory
+spim.setup.DemoCamera$Factory
