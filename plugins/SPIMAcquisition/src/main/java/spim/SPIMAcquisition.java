@@ -70,6 +70,7 @@ import mmcorej.CMMCore;
 import org.apache.commons.math3.geometry.euclidean.threed.Rotation;
 import org.apache.commons.math3.geometry.euclidean.threed.Vector3D;
 import org.micromanager.MMStudioMainFrame;
+import org.micromanager.api.IAcquisitionEngine2010;
 import org.micromanager.api.MMPlugin;
 import org.micromanager.api.ScriptInterface;
 import org.micromanager.utils.ImageUtils;
@@ -559,15 +560,47 @@ public class SPIMAcquisition implements MMPlugin, ItemListener, ActionListener {
 			};
 		});
 
+		JButton testProgAcqBtn = new JButton("Test ProgAcq");
+		testProgAcqBtn.addActionListener(new ActionListener() {
+			@Override
+			public void actionPerformed(ActionEvent ae) {
+				try {
+					org.micromanager.acquisition.AcquisitionManager mgr = new org.micromanager.acquisition.AcquisitionManager();
+					org.micromanager.acquisition.AcquisitionEngine engine = new org.micromanager.acquisition.AcquisitionWrapperEngine(mgr) {
+						protected IAcquisitionEngine2010 engine;
+
+						@Override
+						protected IAcquisitionEngine2010 getAcquisitionEngine2010() {
+							if(engine == null)
+								engine = new ProgrammaticAcquisitor(gui);
+
+							return engine;
+						}
+					};
+					org.micromanager.MMOptions opts = new org.micromanager.MMOptions();
+					opts.loadSettings();
+
+					engine.setPositionList(gui.getPositionList());
+					engine.setCore(mmc, gui.getAutofocusManager());
+					engine.setParentGUI(gui);
+					org.micromanager.AcqControlDlg dlg = new org.micromanager.AcqControlDlg(engine, SPIMAcquisition.prefs, gui, opts);
+					dlg.setVisible(true);
+				} catch (Exception e) {
+					IJ.handleException(e);
+				}
+			}
+		});
+
 		JPanel stageControls = LayoutUtils.vertPanel(
 			stages,
 			Box.createVerticalGlue(),
-			LayoutUtils.tabular(BoxLayout.LINE_AXIS, 5, false, false,
+			LayoutUtils.tabular(BoxLayout.LINE_AXIS, 6, false, false,
 				Box.createHorizontalGlue(),
 				autoReplaceMMControls,
 				devMgrBtn,
 				pixCalibBtn,
-				calibrateButton
+				calibrateButton,
+				testProgAcqBtn
 			)
 		);
 		stageControls.setName("Stage Controls");

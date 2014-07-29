@@ -1,11 +1,24 @@
 package spim.progacq;
 
+import ij.IJ;
 import ij.ImagePlus;
 
+import java.awt.Color;
+import java.awt.Rectangle;
+import java.io.File;
+import java.text.SimpleDateFormat;
+import java.util.Arrays;
+import java.util.Date;
+import java.util.EnumMap;
 import java.util.HashMap;
+import java.util.Iterator;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.Vector;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
 
 import javax.swing.SwingUtilities;
 
@@ -14,8 +27,21 @@ import mmcorej.DeviceType;
 import mmcorej.TaggedImage;
 
 import org.apache.commons.math3.geometry.euclidean.threed.Vector3D;
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
 import org.micromanager.MMStudioMainFrame;
+import org.micromanager.api.Autofocus;
+import org.micromanager.api.IAcquisitionEngine2010;
+import org.micromanager.api.MultiStagePosition;
+import org.micromanager.api.PositionList;
+import org.micromanager.api.ScriptInterface;
+import org.micromanager.api.SequenceSettings;
+import org.micromanager.api.StagePosition;
+import org.micromanager.utils.ChannelSpec;
+import org.micromanager.utils.ImageUtils;
 import org.micromanager.utils.MDUtils;
+import org.micromanager.utils.MMScriptException;
 import org.micromanager.utils.ReportingUtils;
 
 import spim.setup.SPIMSetup;
@@ -23,7 +49,7 @@ import spim.setup.SPIMSetup.SPIMDevice;
 import spim.setup.Stage;
 import spim.progacq.AcqRow.ValueSet;
 
-public class ProgrammaticAcquisitor {
+public class ProgrammaticAcquisitor implements IAcquisitionEngine2010 {
 	public static final String THETA_POSITION_TAG = "ThetaPositionDeg";
 
 	public static class Profiler {
@@ -669,5 +695,347 @@ public class ProgrammaticAcquisitor {
 		}
 
 		handler.processSlice(img);
+	}
+
+	/**
+	 * 
+	 * Micro-Manager Acquisition Engine Implementation
+	 * 
+	 */
+
+	private class AcqAdapter implements AcqOutputHandler {
+		private final BlockingQueue<TaggedImage> imageQueue;
+
+		public AcqAdapter(BlockingQueue<TaggedImage> queue) {
+			this.imageQueue = queue;
+		}
+
+		@Override
+		public ImagePlus getImagePlus() throws Exception {
+			return null;
+		}
+
+		@Override
+		public void beginStack(int timepoint, int view) throws Exception {
+			// no-op
+		}
+
+		@Override
+		public void processSlice(TaggedImage img) throws Exception {
+			ProgrammaticAcquisitor.this.acqStep(
+					MDUtils.getFrameIndex(img.tags),
+					MDUtils.getPositionIndex(img.tags),
+					MDUtils.getChannelIndex(img.tags),
+					MDUtils.getSliceIndex(img.tags),
+					img.tags
+			);
+
+			imageQueue.put(img);
+		}
+
+		@Override
+		public void finalizeStack(int timepoint, int view) throws Exception {
+			// no-op
+		}
+
+		@Override
+		public void finalizeAcquisition() throws Exception {
+			// no-op
+		}
+	}
+
+	private final ScriptInterface scriptInterface;
+	private Thread acquisitionThread;
+	private boolean stop;
+	private AcqParams params;
+	private SPIMSetup setup;
+	private JSONObject summary;
+	private final Map<int[], Runnable> tasks;
+
+	// This constructor signature matches that of the Clojure implementation of AcquisitionEngine2010.
+	public ProgrammaticAcquisitor(ScriptInterface scri)
+	{
+		scriptInterface = scri;
+		stop = false;
+
+		summary = new JSONObject();
+		setup = SPIMSetup.createDefaultSetup(scri.getMMCore());
+		tasks = new HashMap<int[], Runnable>(); // I'm abusing the 'key' concept, here; arrays hash to their pointer, so every key will be unique.
+	}
+
+	@Override
+	public void attachRunnable(int timepoint, int row, int channel, int slice, Runnable task) {
+		tasks.put(new int[] { timepoint, row, channel, slice }, task);
+	}
+
+	private void acqStep(int timepoint, int row, int channel, int slice, JSONObject tags) throws Exception {
+		for(Map.Entry<int[], Runnable> task : tasks.entrySet()) {
+			int[] key = task.getKey();
+			if((key[0] != -1 && key[0] != timepoint) || (key[1] != -1 && key[1] != row) || (key[2] != -1 && key[2] != channel) || (key[3] != -1 && key[3] != slice))
+				continue;
+
+			task.getValue().run();
+		}
+
+		// These metadata are required by MM, but not added by ProgAcq by default. I may still move these up to handleSlice.
+		MDUtils.setChannelName(tags, "Channel " + channel);
+		MDUtils.setChannelColor(tags, Color.WHITE.getRGB());
+		MDUtils.setChannelIndex(tags, channel);
+
+		// These are the extra metadata MM silently requires. Curiously there are no calls in MDUtils to set them.
+		tags.put("Time", new SimpleDateFormat("yyyy-MM-dd HH:mm:ss Z").format(new Date()));
+	}
+
+	@Override
+	public void clearRunnables() {
+		tasks.clear();
+	}
+
+	@Override
+	public JSONObject getSummaryMetadata() {
+		return summary;
+	}
+
+	@Override
+	public boolean isFinished() {
+		return !acquisitionThread.isAlive();
+	}
+
+	@Override
+	public boolean isPaused() {
+		return params.status.isPaused();
+	}
+
+	@Override
+	public boolean isRunning() {
+		return acquisitionThread.isAlive();
+	}
+
+	@Override
+	public long nextWakeTime() {
+		return params.status.wakesAt();
+	}
+
+	@Override
+	public void pause() {
+		params.status.pause(true);
+	}
+
+	@Override
+	public void resume() {
+		params.status.pause(false);
+	}
+
+	@Override
+	public BlockingQueue<TaggedImage> run(SequenceSettings ss) {
+		return run(ss, true);
+	}
+
+	@Override
+	public BlockingQueue<TaggedImage> run(SequenceSettings ss, boolean cleanup) {
+		try {
+			return run(ss, cleanup, scriptInterface.getPositionList(), scriptInterface.getAutofocusManager().getDevice());
+		} catch (MMScriptException e) {
+			ReportingUtils.logError(e);
+			return null;
+		}
+	}
+
+	private static interface ObjectMap<K, V> {
+		public V map(K on);
+	}
+
+	private static <K, V> List<V> map(Iterable<K> from, ObjectMap<K, V> func) {
+		List<V> out = new LinkedList<V>();
+
+		for(K k : from)
+			out.add(func.map(k));
+
+		return out;
+	}
+
+	private static JSONArray summarizePositionList(PositionList poslist) {
+		return new JSONArray(
+			map(Arrays.asList(poslist.getPositions()),
+				new ObjectMap<MultiStagePosition, JSONObject>() {
+					@Override
+					public JSONObject map(MultiStagePosition msp) {
+						try {
+							JSONObject obj = new JSONObject();
+							obj.put("Label", msp.getLabel());
+							obj.put("GridRowIndex", msp.getGridRow());
+							obj.put("GridColumnIndex", msp.getGridColumn());
+
+							Map<String, JSONArray> mspmap = new HashMap<String, JSONArray>();
+							for(int i = 0; i < msp.size(); ++i) {
+								switch(msp.get(i).numAxes) {
+								case 1:
+									mspmap.put(msp.get(i).stageName, new JSONArray(Arrays.asList(msp.get(i).x)));
+									break;
+								case 2:
+									mspmap.put(msp.get(i).stageName, new JSONArray(Arrays.asList(msp.get(i).x, msp.get(i).y)));
+									break;
+								case 3:
+								default:
+									mspmap.put(msp.get(i).stageName, new JSONArray(Arrays.asList(msp.get(i).x, msp.get(i).y, msp.get(i).z)));
+									break;
+								}
+							}
+							obj.put("DeviceCoordinatesUm", new JSONObject(mspmap));
+
+							return obj;
+						} catch(JSONException jse) {
+							throw new Error(jse);
+						}
+					}
+				}
+			)
+		);
+	}
+
+	@Override
+	public BlockingQueue<TaggedImage> run(SequenceSettings ss, boolean cleanup, PositionList poslist, Autofocus afdev) {
+		try {
+			summary = new JSONObject();
+
+			summary.put("BitDepth", setup.getCore().getImageBitDepth());
+			summary.put("Channels", Math.max(1, ss.channels.size()));
+			if(ss.channels.size() > 0) {
+				summary.put("ChNames", new JSONArray(map(ss.channels, new ObjectMap<ChannelSpec, String>() { public String map(ChannelSpec on) { return on.toString(); } })));
+				summary.put("ChColors", new JSONArray(map(ss.channels, new ObjectMap<ChannelSpec, Integer>() { public Integer map(ChannelSpec on) { return on.color.getRGB(); } })));
+				summary.put("ChContrastMax", new JSONArray(map(ss.channels, new ObjectMap<ChannelSpec, Integer>() { public Integer map(ChannelSpec on) { return on.contrast.max; } })));
+				summary.put("ChContrastMin", new JSONArray(map(ss.channels, new ObjectMap<ChannelSpec, Integer>() { public Integer map(ChannelSpec on) { return on.contrast.min; } })));
+			} else {
+				summary.put("ChNames", new JSONArray(Arrays.asList("Default")));
+				summary.put("ChColors", new JSONArray(Arrays.asList(Color.WHITE.getRGB())));
+				summary.put("ChContrastMax", new JSONArray(Arrays.asList(65535)));
+				summary.put("ChContrastMin", new JSONArray(Arrays.asList(0)));
+			}
+			summary.put("Comment", ss.comment);
+			summary.put("ComputerName", java.net.InetAddress.getLocalHost().getHostName());
+			summary.put("Depth", setup.getCore().getBytesPerPixel());
+			summary.put("Directory", ss.save ? ss.root : "");
+			summary.put("Frames", Math.max(1, ss.numFrames));
+			summary.put("GridColumn", 0);
+			summary.put("GridRow", 0);
+			summary.put("Height", setup.getCore().getImageHeight());
+			summary.put("InitialPositionList", ss.usePositionList ? summarizePositionList(poslist) : null);
+			summary.put("Interval_ms", ss.intervalMs);
+			summary.put("CustomIntervals_ms", ss.customIntervalsMs == null ? new JSONArray() : new JSONArray(ss.customIntervalsMs));
+			summary.put("IJType", ImageUtils.BppToImageType(setup.getCore().getBytesPerPixel()));
+			summary.put("KeepShutterOpenChannels", ss.keepShutterOpenChannels);
+			summary.put("KeepShutterOpenSlices", ss.keepShutterOpenSlices);
+			summary.put("MicroManagerVersion", scriptInterface != null ? scriptInterface.getVersion() : setup.getCore().getVersionInfo());
+			summary.put("MetadataVersion", 10);
+			summary.put("PixelAspect", 1.0);
+			summary.put("PixelSize_um", setup.getCore().getPixelSizeUm());
+			summary.put("PixelType", (setup.getCore().getNumberOfComponents() > 1 ? "RGB" : "GRAY") + (setup.getCore().getNumberOfComponents() * setup.getCore().getBytesPerPixel() * 8));
+			summary.put("Positions", Math.min(1, poslist.getNumberOfPositions()));
+			summary.put("Prefix", ss.save ? ss.prefix : "");
+			Rectangle roi = setup.getCore().getROI();
+			summary.put("ROI", roi == null ? new JSONArray() : new JSONArray(Arrays.asList(roi.x, roi.y, roi.width, roi.height)));
+			summary.put("Slices", Math.max(1, ss.slices.size()));
+			summary.put("SlicesFirst", ss.slicesFirst);
+			summary.put("Source", "Micro-Manager");
+			summary.put("TimeFirst", ss.timeFirst);
+			summary.put("UserName", System.getProperty("user.name"));
+			summary.put("UUID", UUID.randomUUID());
+			summary.put("Width", setup.getCore().getImageWidth());
+			summary.put("z-step_um", ss.slices.get(1) - ss.slices.get(0));
+
+			summary.put("Prefix", ss.prefix);
+		} catch (Exception e) {
+			ReportingUtils.showError(e);
+		}
+
+		File outputDir = new File(ss.root);
+		if(!outputDir.exists())
+			if(!outputDir.mkdirs())
+				return null;
+
+		List<AcqRow> rows = new LinkedList<AcqRow>();
+		for(MultiStagePosition msp : poslist.getPositions()) {
+			Map<SPIMDevice, ValueSet> devs = new EnumMap<SPIMDevice, ValueSet>(SPIMDevice.class);
+
+			for(SPIMDevice devkey : SPIMDevice.values()) {
+				spim.setup.Device dev = setup.getDevice(devkey);
+
+				if(dev == null)
+					continue;
+
+				StagePosition sp = msp.get(dev.getLabel());
+
+				if(sp == null)
+					continue;
+
+				if(devkey.equals(SPIMDevice.STAGE_Z))
+				{
+					double[] points = new double[ss.slices.size()];
+					for(int i=0; i < points.length; ++i)
+						points[i] = ss.slices.get(i);
+
+					devs.put(devkey, new ValueSet(points));
+				}
+				else
+				{
+					switch(sp.numAxes) {
+					case 1:
+						devs.put(devkey, new ValueSet(sp.x));
+						break;
+					case 2:
+						devs.put(devkey, new ValueSet(devkey == SPIMDevice.STAGE_X ? sp.x : sp.y));
+						break;
+					case 3:
+					default:
+						throw new Error("Unusual axis count " + sp.numAxes);
+					}
+				}
+			}
+
+			rows.add(new AcqRow(devs));
+		}
+
+		BlockingQueue<TaggedImage> queue = new LinkedBlockingQueue<TaggedImage>();
+
+		params = new AcqParams(
+			setup.getCore(),
+			setup,
+			rows.toArray(new AcqRow[rows.size()]),
+			ss.intervalMs / 1e3,
+			ss.numFrames,
+			false,
+			new AcqProgressCallback() {
+				 @Override
+				public void reportProgress(int tp, int row, double overall) {
+					 ReportingUtils.logMessage(String.format("Acquisition progress at %.2f percent (T %d R %d)...", overall*100, tp, row));
+				}
+			},
+			null,
+			new AcqAdapter(queue)
+		);
+
+		new Thread("ProgrammaticAcquisitor MM Acquisition Thread") {
+			@Override
+			public void run() {
+				try {
+					ProgrammaticAcquisitor.performAcquisition(params);
+				} catch (Exception e) {
+					ReportingUtils.logError(e, "Error while acquiring.");
+				}
+			}
+		}.start();
+
+		return queue;
+	}
+
+	@Override
+	public void stop() {
+		stop = true;
+		acquisitionThread.interrupt();
+	}
+
+	@Override
+	public boolean stopHasBeenRequested() {
+		return stop;
 	}
 };

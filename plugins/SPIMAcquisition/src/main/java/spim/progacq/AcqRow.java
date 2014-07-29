@@ -3,6 +3,7 @@ package spim.progacq;
 import java.text.NumberFormat;
 import java.text.ParseException;
 import java.util.EnumMap;
+import java.util.Map;
 
 import org.apache.commons.math3.geometry.euclidean.threed.Vector3D;
 
@@ -138,6 +139,12 @@ public class AcqRow {
 
 		for(int i = 0; i < devs.length; ++i)
 			setValueSet(devs[i], ValueSet.fromString(infos[i]));
+	}
+
+	public AcqRow(Map<SPIMDevice, ValueSet> values) {
+		this();
+
+		posMap.putAll(values);
 	}
 
 	public AcqRow(double x, double y, double z, double t) {
