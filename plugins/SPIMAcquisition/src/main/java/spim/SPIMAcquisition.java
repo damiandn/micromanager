@@ -644,7 +644,6 @@ public class SPIMAcquisition implements MMPlugin, ItemListener, ActionListener {
 		antiDriftCheckbox = new JCheckBox("Use Anti-Drift");
 
 		liveCheckbox = new JCheckBox("Update Live View", true);
-		liveCheckbox.setSelected(gui.isLiveModeOn());
 
 		laseStackCheckbox = new JCheckBox("Lase Full Stack");
 		laseStackCheckbox.setSelected(false);
