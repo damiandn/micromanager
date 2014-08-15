@@ -41,3 +41,4 @@ build/
 .settings/
 .classpath
 .project
+/plugins/SPIMAcquisition/target/
